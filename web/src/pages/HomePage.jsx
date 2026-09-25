@@ -157,9 +157,9 @@ export function HomePage() {
 
             <dl className="mt-9 grid max-w-lg grid-cols-3 gap-4">
               {[
-                { label: 'Test MAE', value: model ? `${(model.test_mae_kwh ?? 0).toFixed(2)} kWh` : '—' },
-                { label: 'R² score', value: model ? (model.test_r2 ?? 0).toFixed(4) : '—' },
-                { label: 'Engineered features', value: model ? model.features.length ?? 26 : '—' },
+                { label: 'Test MAE', value: model?.metrics?.["Random Forest V2"]?.mae_kwh ? `${(model.metrics["Random Forest V2"].mae_kwh).toFixed(2)} kWh` : '—' },
+                { label: 'R² score', value: model?.metrics?.["Random Forest V2"]?.r2 ? (model.metrics["Random Forest V2"].r2).toFixed(4) : '—' },
+                { label: 'Engineered features', value: model?.feature_count ?? 26 },
               ].map((item) => (
                 <div key={item.label}>
                   <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-fg-subtle">
