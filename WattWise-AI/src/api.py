@@ -99,9 +99,9 @@ ALLOWED_ORIGINS = _cors_origins()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TEMP: Test fix for CORS - will remove after verification
-    allow_credentials=False,
-    allow_methods=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
