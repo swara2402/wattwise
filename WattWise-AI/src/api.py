@@ -28,6 +28,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:8000",
+        "https://web-virid-five-18.vercel.app",  # Your Vercel frontend
         "*"
     ],
     allow_credentials=True,
@@ -599,4 +600,4 @@ def get_anomalies():
             "anomalies": records
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
