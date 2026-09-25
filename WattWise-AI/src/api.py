@@ -80,9 +80,13 @@ def _cors_origins() -> list[str]:
     ``allow_credentials=True`` plus ``*`` is both a spec violation and a
     security hole.
     """
+    # Force add current Vercel URL to always be included, regardless of env vars
+    forced_origins = ["https://web-jn56h2841-swara2402s-projects.vercel.app"]
     raw = os.getenv("CORS_ORIGINS", "")
     configured = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
-    origins = configured or list(DEFAULT_CORS_ORIGINS)
+    base_origins = configured or list(DEFAULT_CORS_ORIGINS)
+    # Combine forced origins with base origins, remove duplicates
+    origins = list(dict.fromkeys(base_origins + forced_origins))
     if "*" in origins:
         raise RuntimeError(
             "CORS_ORIGINS must list explicit origins; '*' cannot be combined "
