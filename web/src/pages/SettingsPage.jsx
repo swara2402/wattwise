@@ -199,7 +199,7 @@ export function SettingsPage() {
                 step={0.25}
                 value={settings.electricityTariff ?? 0}
                 onChange={(event) => updateSettings({ electricityTariff: Number(event.target.value) })}
-                hint="Slab rate before taxes and surcharges."
+                hint="Flat electricity tariff — one rate for all kWh. No time-of-use bands, slabs or taxes are modelled."
               />
               <NumberInput
                 label="Fixed monthly charge"
@@ -221,6 +221,16 @@ export function SettingsPage() {
               value={settings.billAlert ?? 0}
               onChange={(event) => updateSettings({ billAlert: Number(event.target.value) })}
               hint="Flag the bill when the estimate goes past this."
+            />
+            <NumberInput
+              label="Grid carbon intensity"
+              unit="kg CO₂/kWh"
+              min={0.1}
+              max={2.0}
+              step={0.01}
+              value={settings.carbonIntensity ?? 0.79}
+              onChange={(event) => updateSettings({ carbonIntensity: Number(event.target.value) })}
+              hint="Configurable assumption — kg CO2 per kWh for your grid. Not a measured value."
             />
           </div>
 

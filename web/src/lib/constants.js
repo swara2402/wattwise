@@ -23,6 +23,31 @@ export const STORAGE_KEYS = {
   advisorApplied: 'wattwise.advisorApplied.v2',
 }
 
+/**
+ * Grid emission factor, in kg CO2 per kWh.
+ *
+ * This is a *configurable assumption*, not a measurement of any particular
+ * grid. The default is a commonly quoted all-India average; a user on a
+ * different grid, or reading a different published figure, should change it
+ * in Settings. Every surface that shows a CO2 figure labels it as an
+ * assumption.
+ */
+export const DEFAULT_GRID_EMISSION_FACTOR = 0.79
+export const EMISSION_FACTOR_NOTE =
+  'Configurable assumption — kg CO2 per kWh for your grid. Not a measured value.'
+
+/** Billing period length, in days. WattWise models a flat 30-day period. */
+export const DEFAULT_BILLING_DAYS = 30
+
+/**
+ * WattWise only prices a flat per-unit tariff. This is stated wherever a
+ * number is shown so a bill is never read as covering slabs, time-of-use
+ * bands or taxes.
+ */
+export const TARIFF_TYPE = 'flat'
+export const TARIFF_TYPE_NOTE =
+  'Flat electricity tariff — one rate for all kWh. No time-of-use bands, slabs or taxes are modelled.'
+
 export const DEFAULT_SETTINGS = {
   userName: 'Homeowner',
   userEmail: '',
@@ -35,6 +60,10 @@ export const DEFAULT_SETTINGS = {
   notifications: { anomalies: true, weekly: true, bill: true },
   billAlert: 1500,
   dataPeriod: 30,
+  /** kg CO2 per kWh — a configurable assumption, see EMISSION_FACTOR_NOTE. */
+  carbonIntensity: DEFAULT_GRID_EMISSION_FACTOR,
+  /** Length of the billing period the cost figures describe. */
+  billingDays: DEFAULT_BILLING_DAYS,
 }
 
 export const PROPERTY_TYPES = [
@@ -117,45 +146,53 @@ export const SIM_PRESETS = [
   },
 ]
 
-/** Validated V2 test-set window (target 2010-04-24) — the model's known-good input. */
-export const BENCHMARK_30_DAY = [
-  27.998, 30.088, 24.3484, 19.6756, 23.452, 25.9619, 26.3319, 21.5432, 22.8745, 24.1167, 26.4821, 28.1934,
-  25.7743, 23.9156, 19.8368, 24.7189, 27.1523, 29.3412, 26.8847, 24.1938, 22.7716, 23.5564, 25.9987, 27.4315,
-  29.1026, 26.7734, 24.6621, 21.9983, 19.6756, 23.5564,
-]
+const _round3 = (v) => Math.round(v * 1000) / 1000
 
+/**
+ * Predictor input presets.
+ *
+ * These are deliberately *declarative* rather than hard-coded value lists.
+ * A baked-in array of consumption numbers is a liability: it cannot be
+ * checked against the dataset, so it silently goes stale the moment the
+ * data, the split or the feature engineering changes. Instead each preset
+ * names a window and the Predictor resolves it from the API:
+ *
+ *   source: 'testSplit' -> the real 30 days before the held-out split begins
+ *   source: 'tail'      -> the 30 most recent recorded days
+ *
+ * `scale` multiplies the resolved window to model a different duty cycle.
+ * `dateOffsetDays` moves the target date off the resolved window's end.
+ */
 export const PREDICTOR_PRESETS = [
   {
     id: 'benchmark',
-    name: 'Validated benchmark',
-    hint: 'Known-good 30-day window from the V2 test split',
-    build: () => BENCHMARK_30_DAY.map((v) => round3(v)),
-    date: '2010-04-24',
+    name: 'Held-out test window',
+    hint: 'The real 30 days before the held-out test split begins — the window the reported metrics were measured against',
+    source: 'testSplit',
   },
   {
     id: 'history',
     name: 'Latest recorded history',
-    hint: 'Pull the 30 most recent days straight from the dataset',
-    build: null,
-    date: null,
+    hint: 'The 30 most recent recorded days',
+    source: 'tail',
   },
   {
     id: 'summer',
     name: 'Summer peak',
-    hint: 'Benchmark scaled to a hot-weather duty cycle',
-    build: () => BENCHMARK_30_DAY.map((v) => round3(v * 1.55)),
-    date: '2010-05-24',
+    hint: 'Test window scaled 1.55x for a hot-weather duty cycle',
+    source: 'testSplit',
+    scale: 1.55,
+    dateOffsetDays: 30,
   },
   {
     id: 'eco',
     name: 'Efficient home',
-    hint: 'Benchmark scaled to an efficient household',
-    build: () => BENCHMARK_30_DAY.map((v) => round3(v * 0.6)),
-    date: '2010-01-24',
+    hint: 'Test window scaled 0.6x for an efficient household',
+    source: 'testSplit',
+    scale: 0.6,
+    dateOffsetDays: -90,
   },
 ]
-
-const round3 = (v) => Math.round(v * 1000) / 1000
 
 export const RECOMMENDATIONS = [
   {
@@ -266,6 +303,14 @@ export const RECOMMENDATIONS = [
 
 export const RECOMMENDATION_CATEGORIES = ['All', 'Cooling', 'Heating', 'Appliances', 'Standby', 'Lighting', 'Timing']
 
+/**
+ * Build-time snapshot of the published metrics.
+ *
+ * Only ever used to keep the Models page renderable when the API is
+ * unreachable. `modelsPage` labels these numbers as an offline snapshot so a
+ * stale figure is never presented as if it came from the running model.
+ * Prefer `useModelInfo()`.
+ */
 export const MODEL_FALLBACK = {
   model: 'Random Forest V2',
   model_type: 'RandomForestRegressor',
@@ -273,40 +318,53 @@ export const MODEL_FALLBACK = {
   test_rmse_kwh: 5.5234,
   test_r2: 0.4584,
   features: 26,
+  isOfflineSnapshot: true,
 }
 
+/**
+ * The model lineup. Prose only.
+ *
+ * Metric *numbers* are intentionally absent: they live in the API's
+ * `/model-info` payload and would go stale if duplicated here. Each entry
+ * names the model to look up, and `ModelsPage` renders a dash plus
+ * "unavailable offline" when the API has no row for it.
+ */
 export const MODEL_STACK = [
   {
     id: 'rf',
+    lookup: 'Random Forest V2',
     name: 'Random Forest V2',
     role: 'Production regressor',
     tone: 'brand',
-    blurb: '300-tree ensemble over 26 engineered temporal features. Lowest MAE, calibrated for daily kWh forecasting.',
-    metrics: { MAE: 4.0028, RMSE: 5.5234, R2: 0.4584, time: '0.74 s' },
+    blurb: 'Supervised regression model with 400 decision trees over 26 engineered temporal features. Lowest MAE, calibrated for daily kWh forecasting. Uses a chronological train/test split to avoid data leakage.',
+    regressor: true,
   },
   {
     id: 'xgb',
+    lookup: 'XGBoost V2',
     name: 'XGBoost V2',
     role: 'Gradient-boosting benchmark',
     tone: 'accent',
-    blurb: 'Boosted trees with the same feature set. Slightly worse MAE but sharper on recency — useful as a sanity check.',
-    metrics: { MAE: 4.1334, RMSE: 5.7711, R2: 0.4087, time: '1.55 s' },
+    blurb: 'Supervised gradient-boosted regression model with 700 trees and the same feature set. Slightly worse MAE but sharper on recency — useful as a sanity check. Trained on the same chronological split.',
+    regressor: true,
   },
   {
     id: 'if',
+    lookup: 'Isolation Forest',
     name: 'Isolation Forest V2',
     role: 'Unsupervised anomaly detector',
     tone: 'warn',
-    blurb: 'Random-split isolation over the multivariate feature space. Flags days that need fewer splits to isolate.',
-    metrics: { MAE: '—', RMSE: '—', R2: '—', time: '0.31 s' },
+    blurb: 'Unsupervised anomaly detection model using random-split isolation over the multivariate feature space, fit at 2% contamination. Flags unusual consumption days that require fewer splits to isolate from the rest of the data.',
+    regressor: false,
   },
   {
     id: 'kmeans',
+    lookup: 'K-Means V2',
     name: 'K-Means V2',
-    role: 'Usage segmentation',
+    role: 'Usage pattern segmentation',
     tone: 'info',
-    blurb: 'Standardised daily kWh clustered into two operational modes. Silhouette 0.3606 at K=2.',
-    metrics: { MAE: '—', RMSE: '—', R2: '0.3606', time: '0.09 s' },
+    blurb: 'Unsupervised clustering model that segments standardized daily consumption into two distinct usage patterns: high-consumption and low-consumption lifestyles, identified from historical household data.',
+    regressor: false,
   },
 ]
 

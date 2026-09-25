@@ -19,6 +19,8 @@ from sklearn.inspection import permutation_importance
 
 from xgboost import XGBRegressor
 
+from src.features import FEATURE_COLUMNS, add_time_series_features
+
 
 # ============================================================
 # WATTWISE AI V2
@@ -208,83 +210,24 @@ step(4, "Creating advanced time-series features")
 
 data = daily.copy()
 
-# Calendar features
-data["year"] = data.index.year
-data["month"] = data.index.month
-data["day"] = data.index.day
-data["day_of_week"] = data.index.dayofweek
-data["day_of_year"] = data.index.dayofyear
-data["week_of_year"] = data.index.isocalendar().week.astype(int)
-data["quarter"] = data.index.quarter
-data["is_weekend"] = (
-    data.index.dayofweek >= 5
-).astype(int)
-
-# Season
-data["season"] = (
-    (data.index.month % 12) // 3
-)
-
 # ------------------------------------------------------------
-# Lag features
+# Features come from src/features.py, which is the single
+# implementation shared with the FastAPI serving path in
+# src/api.py. Do not re-derive any of these columns here: a second
+# copy of this arithmetic is how training and serving drift apart.
 # ------------------------------------------------------------
 
-for lag in [
-    1,
-    2,
-    3,
-    7,
-    14,
-    21,
-    30
-]:
+feature_columns = list(FEATURE_COLUMNS)
 
-    data[f"lag_{lag}"] = (
-        data["energy_kwh"]
-        .shift(lag)
-    )
-
-# ------------------------------------------------------------
-# Rolling features
-# ------------------------------------------------------------
-
-for window in [
-    3,
-    7,
-    14,
-    30
-]:
-
-    data[f"rolling_mean_{window}"] = (
-        data["energy_kwh"]
-        .shift(1)
-        .rolling(window)
-        .mean()
-    )
-
-    data[f"rolling_std_{window}"] = (
-        data["energy_kwh"]
-        .shift(1)
-        .rolling(window)
-        .std()
-    )
-
-# ------------------------------------------------------------
-# Exponentially weighted trend
-# ------------------------------------------------------------
-
-data["ewm_7"] = (
-    data["energy_kwh"]
-    .shift(1)
-    .ewm(span=7)
-    .mean()
-)
-
-data["ewm_30"] = (
-    data["energy_kwh"]
-    .shift(1)
-    .ewm(span=30)
-    .mean()
+data = pd.concat(
+    [
+        data.drop(columns=["energy_kwh"]),
+        add_time_series_features(
+            data["energy_kwh"],
+            feature_columns=tuple(feature_columns)
+        )
+    ],
+    axis=1
 )
 
 
@@ -298,44 +241,6 @@ print(
     f"{len(data):,}"
 )
 
-
-# ============================================================
-# 5. FEATURES / TARGET
-# ============================================================
-
-feature_columns = [
-
-    "year",
-    "month",
-    "day",
-    "day_of_week",
-    "day_of_year",
-    "week_of_year",
-    "quarter",
-    "is_weekend",
-    "season",
-
-    "lag_1",
-    "lag_2",
-    "lag_3",
-    "lag_7",
-    "lag_14",
-    "lag_21",
-    "lag_30",
-
-    "rolling_mean_3",
-    "rolling_mean_7",
-    "rolling_mean_14",
-    "rolling_mean_30",
-
-    "rolling_std_3",
-    "rolling_std_7",
-    "rolling_std_14",
-    "rolling_std_30",
-
-    "ewm_7",
-    "ewm_30"
-]
 
 X = data[feature_columns]
 

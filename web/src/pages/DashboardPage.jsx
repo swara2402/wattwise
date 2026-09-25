@@ -28,9 +28,9 @@ import { enrichAnomalies, averageByWeekday, movingAverage, compareWindows, summa
 import { formatDate, money, num, percent } from '../lib/format'
 
 const RANGES = [
-  { value: 7, label: '7 days' },
-  { value: 30, label: '30 days' },
-  { value: 90, label: '90 days' },
+  { value: 7, label: '7-day period' },
+  { value: 30, label: '30-day period' },
+  { value: 90, label: '90-day period' },
 ]
 
 const APPLIANCE_COLORS = ['var(--brand)', 'var(--accent)', 'var(--info)', 'var(--violet)', 'var(--warn)', 'var(--danger)']
@@ -197,7 +197,7 @@ export function DashboardPage() {
       )}
 
       {topAnomaly && (
-        <Link to="/waste" className="block">
+        <Link to="/anomalies-excess" className="block">
           <Card className="card-pad card-hover flex flex-wrap items-center gap-4 border-danger/25 bg-danger-soft/40">
             <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-danger/15 text-danger">
               <TriangleAlert className="size-5" strokeWidth={2.2} aria-hidden="true" />
@@ -208,8 +208,8 @@ export function DashboardPage() {
                 <Badge tone="danger">{topAnomaly.severity}</Badge>
               </div>
               <p className="mt-1 text-[0.82rem] text-fg-muted">
-                {formatDate(topAnomaly.date)} · {topAnomaly.category} · roughly{' '}
-                {money(topAnomaly.wastedKwh * tariff)} of avoidable spend
+                {formatDate(topAnomaly.date)} · {topAnomaly.category} · estimated excess cost vs baseline:{' '}
+                {money(topAnomaly.wastedKwh * tariff)}
               </p>
             </div>
             <span className="flex items-center gap-1.5 text-sm font-semibold text-danger">

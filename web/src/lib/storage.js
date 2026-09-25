@@ -1,15 +1,43 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export function readStore(key, fallback) {
+/**
+ * Read a persisted value, repairing it on the way in.
+ *
+ * `revive(stored, fallback)` is expected to return a value matching the
+ * current shape, or `null`/undefined to signal "unusable, use the fallback".
+ * Without it the raw parsed JSON is returned, which is fine for plain values
+ * but unsafe for anything with a schema.
+ */
+export function readStore(key, fallback, revive) {
   if (typeof window === 'undefined') return fallback
+  let raw
   try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw)
-    return parsed ?? fallback
+    raw = window.localStorage.getItem(key)
   } catch {
     return fallback
   }
+  if (raw === null || raw === undefined || raw === '') return fallback
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    // Corrupt entry. Drop it so the next write starts clean.
+    try {
+      window.localStorage.removeItem(key)
+    } catch {
+      /* ignore */
+    }
+    return fallback
+  }
+  if (revive) {
+    try {
+      const revived = revive(parsed, fallback)
+      return revived === undefined || revived === null ? fallback : revived
+    } catch {
+      return fallback
+    }
+  }
+  return parsed ?? fallback
 }
 
 export function writeStore(key, value) {
@@ -21,10 +49,12 @@ export function writeStore(key, value) {
   }
 }
 
-/** State that survives reloads, with a debounced write. */
-export function usePersistentState(key, initialValue) {
-  const [value, setValue] = useState(() => readStore(key, initialValue))
+/** State that survives reloads, with a debounced write and a revive hook. */
+export function usePersistentState(key, initialValue, revive) {
+  const [value, setValue] = useState(() => readStore(key, initialValue, revive))
   const first = useRef(true)
+  const reviveRef = useRef(revive)
+  reviveRef.current = revive
 
   useEffect(() => {
     if (first.current) {
@@ -35,6 +65,20 @@ export function usePersistentState(key, initialValue) {
     return () => clearTimeout(timer)
   }, [key, value])
 
+  // A changed schema definition should not strand already-loaded state.
+  useEffect(() => {
+    if (!reviveRef.current) return
+    setValue((prev) => {
+      try {
+        const next = reviveRef.current(prev, initialValue)
+        if (next === undefined || next === null) return prev
+        return JSON.stringify(next) === JSON.stringify(prev) ? prev : next
+      } catch {
+        return prev
+      }
+    })
+  }, [initialValue])
+
   const reset = useCallback(() => setValue(initialValue), [initialValue])
 
   return [value, setValue, reset]
@@ -42,7 +86,14 @@ export function usePersistentState(key, initialValue) {
 
 export function clearAllWattWise() {
   if (typeof window === 'undefined') return
-  for (const key of Object.keys(window.localStorage)) {
-    if (key.startsWith('wattwise.')) window.localStorage.removeItem(key)
+  try {
+    const keys = []
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i)
+      if (key && key.startsWith('wattwise.')) keys.push(key)
+    }
+    for (const key of keys) window.localStorage.removeItem(key)
+  } catch {
+    /* ignore */
   }
 }

@@ -11,6 +11,7 @@ import {
   Layers,
   Network,
   Timer,
+  TriangleAlert,
   Workflow,
 } from 'lucide-react'
 import { Card, PageHeader } from '../components/ui/Card'
@@ -23,16 +24,20 @@ import { FeatureImportanceChart } from '../components/charts/FeatureImportanceCh
 import { useModelAnalytics, useModelInfo } from '../hooks/useEnergyData'
 import { API_BASE } from '../lib/api'
 import { FEATURE_DESCRIPTIONS, FEATURE_GROUPS, MODEL_FALLBACK, MODEL_STACK } from '../lib/constants'
-import { num } from '../lib/format'
+import { formatDate, num } from '../lib/format'
 
 const METRIC_ORDER = ['MAE', 'RMSE', 'R2']
 
+/**
+ * Pipeline copy. Row counts and dates are rendered from `/model-info` where
+ * they are numeric; these strings only carry the qualitative description.
+ */
 const PIPELINE = [
   {
     title: 'Ingest',
     icon: Database,
     tone: 'info',
-    body: 'Household A+B+C.csv — 1,433 consecutive days, 2006-12-16 to 2010-11-26. Gaps forward-filled and clamped to the 0–120 kWh sanity band.',
+    body: 'Household A+B+C.csv — daily kWh resampled and re-indexed onto a complete calendar. Gaps forward-filled and clamped to the 0–120 kWh sanity band.',
   },
   {
     title: 'Engineer',
@@ -44,13 +49,13 @@ const PIPELINE = [
     title: 'Train',
     icon: Workflow,
     tone: 'accent',
-    body: 'Random Forest (300 trees), XGBoost and Isolation Forest are fitted on the first 80% of days. Chronological split — no shuffling, so no leakage from the future.',
+    body: 'Random Forest (400 trees), XGBoost and Isolation Forest are fitted on the earliest 70% of days, with the next 15% reserved for validation. Chronological split — no shuffling, so no leakage from the future.',
   },
   {
     title: 'Validate',
     icon: CheckCircle2,
     tone: 'warn',
-    body: 'The held-out final 20% (287 days) scores every candidate. MAE, RMSE and R² are reported per model, and the best regressor is promoted to production.',
+    body: 'The final 15% of the timeline is the held-out test set, and it is scored exactly once. MAE, RMSE and R² are reported per model, and the best regressor is promoted to production.',
   },
   {
     title: 'Serve',
@@ -78,6 +83,27 @@ export function ModelsPage() {
     RMSE: meta.test_rmse_kwh ?? 5.5234,
     R2: meta.test_r2 ?? 0.4584,
   }
+
+  /**
+   * Per-model metrics come from the API, keyed by `MODEL_STACK[].lookup`.
+   * A model with no row here (the clusterers, which are not regressors) is
+   * shown as unavailable rather than filled in with a remembered number.
+   */
+  const apiMetrics = info.data?.metrics ?? {}
+  const stackMetrics = (entry) => {
+    const row = apiMetrics[entry.lookup]
+    if (!row) return null
+    return {
+      MAE: row.mae_kwh,
+      RMSE: row.rmse_kwh,
+      R2: row.r2,
+      time: row.training_seconds != null ? `${row.training_seconds.toFixed(2)} s` : '—',
+    }
+  }
+
+  const split = info.data?.split
+  const testSplit = split?.boundaries?.test
+  const dataset = info.data?.dataset
 
   const importance = useMemo(() => {
     const rows =
@@ -112,8 +138,8 @@ export function ModelsPage() {
         subtitle="Every figure in this app comes out of the pipeline below. No black boxes, no invented accuracy percentages."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={info.status === 'success' ? 'brand' : 'muted'} icon={Cpu}>
-              {info.status === 'success' ? 'Live from /model-info' : 'Using validated fallback'}
+            <Badge tone={info.status === 'success' ? 'brand' : 'warn'} icon={Cpu}>
+              {info.status === 'success' ? 'Live from /model-info' : 'Offline snapshot — API unreachable'}
             </Badge>
             <Button
               variant="outline"
@@ -135,7 +161,15 @@ export function ModelsPage() {
         {[
           { label: 'Production model', value: model, sub: meta.model_type, icon: Cpu, tone: 'text-brand' },
           { label: 'Engineered features', value: num(featureCount, 0), sub: `${FEATURE_GROUPS.length} feature families`, icon: Layers, tone: 'text-accent' },
-          { label: 'Training rows', value: num(analytics.data?.n_samples ?? 1433, 0), sub: '1,433 days · 2006–2010', icon: Database, tone: 'text-info' },
+          {
+            label: 'Training rows',
+            value: num(split?.training_rows ?? dataset?.rows ?? analytics.data?.n_samples ?? 1433, 0),
+            sub: dataset?.date_range
+              ? `${dataset.date_range.start} – ${dataset.date_range.end}`
+              : `${num(dataset?.rows ?? 1433, 0)} days`,
+            icon: Database,
+            tone: 'text-info',
+          },
           { label: 'Mean daily usage', value: num(analytics.data?.mean_kwh ?? 26.03, 2), sub: 'kWh across the dataset', icon: Timer, tone: 'text-warn' },
         ].map((stat) => (
           <Card key={stat.label} className="card-pad">
@@ -157,7 +191,9 @@ export function ModelsPage() {
       {tab === 'models' && (
         <div className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
-            {MODEL_STACK.map((entry) => (
+            {MODEL_STACK.map((entry) => {
+              const row = stackMetrics(entry)
+              return (
               <Card key={entry.id} className="card-pad flex flex-col">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -175,8 +211,7 @@ export function ModelsPage() {
 
                 <dl className="mt-4 grid grid-cols-4 gap-2 border-t border-line pt-3.5">
                   {METRIC_ORDER.map((key) => {
-                    const value = entry.metrics[key]
-                    const isNumber = typeof value === 'number'
+                    const value = row?.[key]
                     return (
                       <div key={key}>
                         <dt className="text-[0.65rem] uppercase tracking-wider text-fg-subtle">{key}</dt>
@@ -185,24 +220,40 @@ export function ModelsPage() {
                             entry.id === 'rf' ? 'text-brand' : 'text-fg'
                           }`}
                         >
-                          {isNumber ? num(value, key === 'R2' ? 4 : 4) : value}
+                          {typeof value === 'number' ? num(value, 4) : <span className="text-fg-subtle">n/a</span>}
                         </dd>
                       </div>
                     )
                   })}
                   <div>
-                    <dt className="text-[0.65rem] uppercase tracking-wider text-fg-subtle">time</dt>
-                    <dd className="stat-value mt-0.5 text-[0.85rem]">{entry.metrics.time}</dd>
+                    <dt className="text-[0.65rem] uppercase tracking-wider text-fg-subtle">fit time</dt>
+                    <dd className="stat-value mt-0.5 text-[0.85rem]">
+                      {row?.time ?? <span className="text-fg-subtle">n/a</span>}
+                    </dd>
                   </div>
                 </dl>
+                {!row && (
+                  <p className="mt-2 text-[0.7rem] text-fg-subtle">
+                    Not a regressor — no MAE/RMSE/R². Metrics appear here once the API reports them.
+                  </p>
+                )}
               </Card>
-            ))}
+              )
+            })}
           </div>
 
           <Card className="card-pad">
             <h2 className="text-[0.98rem] font-semibold">Regression metrics, explained</h2>
             <p className="mt-1 text-[0.8rem] text-fg-muted">
-              The held-out split is the final 20% of the timeline — 287 days the models never saw.
+              {testSplit ? (
+                <>
+                  The held-out test split runs {formatDate(testSplit.start_date)} –{' '}
+                  {formatDate(testSplit.end_date)} — {num(testSplit.rows, 0)} days the models never saw, scored once
+                  each.
+                </>
+              ) : (
+                'The held-out test split is the final slice of the timeline — days the models never saw.'
+              )}
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {[
@@ -356,16 +407,25 @@ export function ModelsPage() {
             <div className="scrollbar-slim mt-4 overflow-x-auto">
               <pre className="min-w-max rounded-xl border border-line bg-surface-2 p-4 font-mono text-[0.72rem] leading-relaxed text-fg-muted">
 {`GET  /health              → { status, model, model_type, features }
-GET  /model-info          → { test_mae_kwh, test_rmse_kwh, test_r2, features }
-GET  /model-analytics     → { primary_model, feature_importance, comparison, clusters }
-GET  /historical-data     → { count, data: [{ date, energy_kwh }] }
+GET  /model-info          → { model, hyperparameters, features[26],
+                              split{boundaries}, metrics{per model},
+                              dataset{date_range, rows} }
+GET  /dataset-info        → { start_date, end_date, rows, gaps }
+GET  /model-analytics     → { primary_model, feature_importance,
+                              comparison, clusters }
+GET  /historical-data     → ?limit=30&before=YYYY-MM-DD
+                         → { count, data: [{ date, energy_kwh }],
+                             dataset_start, dataset_end }
 GET  /anomalies           → { count, anomalies: [{ date, energy_kwh,
                                     rolling_mean_7, rolling_std_7,
                                     anomaly_score }] }
 POST /predict             → { consumption: number[30], target_date: "YYYY-MM-DD" }
-                        ← { predicted_kwh, model }
-POST /predict-bill        → { predicted_kwh, tariff_per_kwh }
-                        ← { estimated_bill, tariff_per_kwh, monthly_units }`}
+                         ← { predicted_kwh, model }
+POST /predict-bill        → { predicted_kwh, tariff_per_kwh,
+                              days, fixed_charge_per_period }
+                         ← { estimated_bill, energy_charge,
+                             fixed_charge, consumption_kwh,
+                             days, tariff_per_kwh, period }`}
               </pre>
             </div>
           </Card>
@@ -383,11 +443,24 @@ POST /predict-bill        → { predicted_kwh, tariff_per_kwh }
                   src/features.py
                 </code>{' '}
                 builds the 26 features and{' '}
-                <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[0.72rem]">notebooks/</code>{' '}
-                contains the training runs.
+                <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-[0.72rem]">train_v2.py</code>{' '}
+                is the script that fits and scores the shipped artifact.
               </p>
             </div>
           </Card>
+
+          {dataset?.extrapolation_note && (
+            <Card className="card-pad flex items-start gap-3 border-warn/40 bg-warn-soft">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" strokeWidth={2.2} aria-hidden="true" />
+              <div className="text-[0.8rem] leading-relaxed text-fg-muted">
+                <p className="font-semibold text-fg">Read this before quoting the metrics</p>
+                <p className="mt-1">{dataset.extrapolation_note}</p>
+                {dataset.date_shift_note && (
+                  <p className="mt-2 text-fg-subtle">{dataset.date_shift_note}</p>
+                )}
+              </div>
+            </Card>
+          )}
         </div>
       )}
     </div>

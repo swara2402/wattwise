@@ -31,10 +31,10 @@ import { downloadText, parseCsv, pickFile, toCsv } from '../lib/files'
 import { formatDate, kwh as fmtKwh, money, num, signedPercent } from '../lib/format'
 
 const RANGES = [
-  { value: 30, label: '30 days' },
-  { value: 90, label: '90 days' },
-  { value: 180, label: '6 months' },
-  { value: 365, label: '12 months' },
+  { value: 30, label: '30-day period' },
+  { value: 90, label: '90-day period' },
+  { value: 180, label: '6-month period' },
+  { value: 365, label: '12-month period' },
 ]
 
 export function AnalyticsPage() {

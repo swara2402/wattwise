@@ -1,0 +1,3 @@
+is_weekend,avg_daily_kwh,days_count,day_type
+1,26.03500031830304,399,Weekend
+0,25.60053106540216,1004,Weekday

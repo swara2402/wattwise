@@ -50,7 +50,10 @@ export function PredictorPage() {
   const localFixed = Number(fixedCharges) || 0
   const billDays = Number(result?.billDays ?? settings.billingDays) || 30
 
-  const days = values.days?.length === DAY_COUNT ? values.days : []
+  // Memoize days to prevent useMemo re-evaluations on every render
+  const days = useMemo(() => {
+    return values.days?.length === DAY_COUNT ? values.days : []
+  }, [values.days])
   const split = modelInfo.data?.split
   const testSplit = split?.boundaries?.test
   const testStartDate = testSplit?.start_date ?? null
@@ -59,7 +62,9 @@ export function PredictorPage() {
   const targetDate = values.targetDate || ''
   
   // Benchmark 30-day window from the held-out test split
-  const BENCHMARK_30_DAY = testSplit?.values ?? Array(30).fill('')
+  const BENCHMARK_30_DAY = useMemo(() => {
+    return testSplit?.values ?? Array(30).fill('')
+  }, [testSplit?.values])
 
   const debouncedValues = useDebouncedValue(days, 250)
 
@@ -192,10 +197,11 @@ export function PredictorPage() {
       // The forecast is for one day, but a bill covers a period. The fixed
       // charge is added once per period, so it is passed through rather than
       // multiplied by the day count.
+      const controller = new AbortController()
       const bill = await api.predictBill(predictedKwh, Number(localTariff), {
         days: billDays,
         fixedChargePerPeriod: localFixed,
-      })
+      }, controller.signal)
       const band = predictionBand(
         predictedKwh,
         modelInfo.data?.test_mae_kwh ?? 4.0028,
@@ -317,7 +323,7 @@ export function PredictorPage() {
               <div className="mt-4 max-w-md">
                 <div className="flex items-center justify-between text-[0.72rem] text-fg-subtle">
                   <span className="stat-value">{result.band.low.toFixed(2)} kWh</span>
-                  <span className="font-semibold text-fg-muted">expected range</span>
+                  <span className="font-semibold text-fg-muted">Typical test error</span>
                   <span className="stat-value">{result.band.high.toFixed(2)} kWh</span>
                 </div>
                 <div className="relative mt-1.5 h-2 rounded-full bg-surface-2">
@@ -483,6 +489,37 @@ export function PredictorPage() {
             </p>
           )}
         </div>
+
+        {/* Dataset metadata from /model-info */}
+        {modelInfo.data && (
+          <div className="mt-6 rounded-lg border border-line bg-surface-2 p-4">
+            <h3 className="text-[0.85rem] font-semibold text-fg">Dataset & model metadata</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p className="text-[0.7rem] uppercase tracking-wider text-fg-subtle">Dataset range</p>
+                <p className="mt-1 text-[0.8rem] text-fg">
+                  {modelInfo.data.dataset?.start_date || '—'} → {modelInfo.data.dataset?.end_date || '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[0.7rem] uppercase tracking-wider text-fg-subtle">Train/val/test split</p>
+                <p className="mt-1 text-[0.8rem] text-fg">
+                  {modelInfo.data.split?.fractions?.train * 100 || 70}% / {modelInfo.data.split?.fractions?.validation * 100 || 15}% / {modelInfo.data.split?.fractions?.test * 100 || 15}%
+                </p>
+              </div>
+              <div>
+                <p className="text-[0.7rem] uppercase tracking-wider text-fg-subtle">Test split boundary</p>
+                <p className="mt-1 text-[0.8rem] text-fg">
+                  {modelInfo.data.split?.boundaries?.test?.start_date || '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[0.7rem] uppercase tracking-wider text-fg-subtle">Total rows</p>
+                <p className="mt-1 text-[0.8rem] text-fg">{modelInfo.data.trained_on_rows?.toLocaleString() || '—'}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <Button

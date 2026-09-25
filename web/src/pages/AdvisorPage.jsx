@@ -115,9 +115,9 @@ export function AdvisorPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="AI advisor"
+        eyebrow="Energy Advisor"
         title="Savings, ranked by your tariff"
-        subtitle="Eight evidence-backed actions priced at your exact rate. Apply any of them and the simulator updates instantly."
+        subtitle="Rule-based recommendations generated from your appliance usage and energy-saving assumptions. Apply any of them and the simulator updates instantly."
         action={
           <Segmented
             options={RANKING_OPTIONS}

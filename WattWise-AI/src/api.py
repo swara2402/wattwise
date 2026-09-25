@@ -1,12 +1,51 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List
+"""WattWise AI FastAPI service.
+
+Design notes
+------------
+* Feature construction is delegated entirely to :mod:`src.features`, which is
+  the same module the training pipeline uses. This module contains no feature
+  arithmetic of its own, so serving and training cannot drift.
+* Model, dataset and metric facts come from :mod:`src.metadata`, which reads
+  the shipped artifacts. Nothing displayed to a client is hard-coded here.
+* ``CORS_ORIGINS`` is read from the environment. A wildcard is rejected at
+  startup because it is incompatible with credentialed requests and would
+  make the API callable from any site.
+"""
+
+from __future__ import annotations
+
+import os
 from datetime import date
+from typing import Any
+
 import joblib
 import numpy as np
 import pandas as pd
-import os
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+try:  # package import: ``uvicorn src.api:app``
+    from . import metadata as meta
+    from .billing import DEFAULT_BILLING_DAYS, MAX_BILLING_DAYS, BillInputError, compute_bill
+    from .features import (
+        CONTEXT_WINDOW,
+        FEATURE_COLUMNS,
+        build_target_features,
+    )
+except ImportError:  # flat import: ``api:app`` with ``src`` on sys.path
+    import metadata as meta  # type: ignore[no-redef]
+    from billing import (  # type: ignore[no-redef]
+        DEFAULT_BILLING_DAYS,
+        MAX_BILLING_DAYS,
+        BillInputError,
+        compute_bill,
+    )
+    from features import (  # type: ignore[no-redef]
+        CONTEXT_WINDOW,
+        FEATURE_COLUMNS,
+        build_target_features,
+    )
 
 
 # =========================================================
@@ -16,588 +55,463 @@ import os
 app = FastAPI(
     title="WattWise AI API",
     description="ML-powered household electricity prediction API",
-    version="1.0.0"
+    version="2.0.0",
 )
 
-# Configure CORS
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+    "https://wattwise-ai.vercel.app",  # Legacy deployment URL
+    "https://web-24f6gbeec-swara2402s-projects.vercel.app",  # Current deployment URL - update this to your actual Vercel URL
+)
+
+
+def _cors_origins() -> list[str]:
+    """Explicit browser origins allowed to call this API.
+
+    Comma-separated ``CORS_ORIGINS`` wins; otherwise the built-in list is
+    used, which covers local Vite and the deployed Vercel frontend. A
+    wildcard is rejected rather than silently accepted, because
+    ``allow_credentials=True`` plus ``*`` is both a spec violation and a
+    security hole.
+    """
+    raw = os.getenv("CORS_ORIGINS", "")
+    configured = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
+    origins = configured or list(DEFAULT_CORS_ORIGINS)
+    if "*" in origins:
+        raise RuntimeError(
+            "CORS_ORIGINS must list explicit origins; '*' cannot be combined "
+            "with credentialed requests."
+        )
+    return origins
+
+
+ALLOWED_ORIGINS = _cors_origins()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
-        "https://web-virid-five-18.vercel.app",  # Your Vercel frontend
-        "*"
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
 # =========================================================
-# PATHS
+# ARTIFACTS
 # =========================================================
 
-BASE_DIR = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
-)
+model = joblib.load(meta.RF_MODEL)
 
-MODEL_PATH = os.path.join(
-    BASE_DIR,
-    "models",
-    "random_forest_v2.joblib"
-)
+# The forest was fitted with n_jobs=-1. Serving a single row with every core
+# costs more than it saves, and the threaded reduction makes the float
+# summation order vary between calls, so repeated predictions of identical
+# input can differ in the last bits. Pin it to one worker for reproducible
+# responses.
+model.n_jobs = 1
 
-DAILY_DATA_PATH = os.path.join(
-    BASE_DIR,
-    "data",
-    "processed",
-    "daily_consumption_v2.csv"
-)
+MODEL_FEATURES = list(model.feature_names_in_)
 
-
-# =========================================================
-# LOAD MODEL
-# =========================================================
-
-model = joblib.load(MODEL_PATH)
-
-EXPECTED_FEATURES = model.feature_names_in_.tolist()
-
-
-# =========================================================
-# LOAD HISTORICAL DAILY DATA
-# =========================================================
-
-if not os.path.exists(DAILY_DATA_PATH):
-    raise FileNotFoundError(
-        f"Daily dataset not found: {DAILY_DATA_PATH}"
+if MODEL_FEATURES != list(FEATURE_COLUMNS):
+    raise RuntimeError(
+        "Feature contract drift: src/features.FEATURE_COLUMNS does not match the "
+        "fitted model's feature_names_in_.\n"
+        f"  features.py: {list(FEATURE_COLUMNS)}\n"
+        f"  model      : {MODEL_FEATURES}"
     )
 
-daily_data = pd.read_csv(
-    DAILY_DATA_PATH,
-    parse_dates=["datetime"]
+#: Date/energy view of the demo series, cached for the life of the process.
+DAILY = (
+    meta.daily_frame()[["datetime", "energy_kwh"]]
+    .sort_values("datetime")
+    .reset_index(drop=True)
 )
+DAILY["energy_kwh"] = pd.to_numeric(DAILY["energy_kwh"], errors="coerce")
+DAILY = DAILY.dropna(subset=["energy_kwh"]).reset_index(drop=True)
 
-daily_data = daily_data[
-    ["datetime", "energy_kwh"]
-].copy()
-
-daily_data = daily_data.sort_values(
-    "datetime"
-).reset_index(drop=True)
-
-daily_data["energy_kwh"] = pd.to_numeric(
-    daily_data["energy_kwh"],
-    errors="coerce"
-)
-
-daily_data = daily_data.dropna(
-    subset=["energy_kwh"]
-).reset_index(drop=True)
+DATASET_START, DATASET_END = meta.dataset_range()
 
 
 # =========================================================
 # REQUEST MODELS
 # =========================================================
 
+
 class PredictionRequest(BaseModel):
-
-    consumption: List[float] = Field(
+    consumption: list[float] = Field(
         ...,
-        min_length=30,
-        max_length=30,
-        description="Exactly 30 consecutive daily electricity consumption values in kWh."
+        min_length=CONTEXT_WINDOW,
+        max_length=CONTEXT_WINDOW,
+        description=(
+            f"Exactly {CONTEXT_WINDOW} daily consumption values in kWh, oldest first. "
+            "These are the most recent recorded days immediately preceding "
+            "target_date; they replace the final 30 records of the demo history."
+        ),
     )
-
     target_date: date = Field(
         ...,
-        description="Date for which the next-day prediction is requested."
+        description="The single day to predict.",
     )
 
 
 class BillRequest(BaseModel):
-
     predicted_kwh: float = Field(
         ...,
-        gt=0
+        gt=0,
+        description="Predicted consumption for ONE day, in kWh.",
     )
-
     tariff_per_kwh: float = Field(
         ...,
-        gt=0
+        gt=0,
+        description="Flat unit rate in currency per kWh. No time-of-use or slab banding.",
+    )
+    days: int = Field(
+        DEFAULT_BILLING_DAYS,
+        ge=1,
+        le=MAX_BILLING_DAYS,
+        description="Length of the billing period in days.",
+    )
+    fixed_charge_per_period: float = Field(
+        0.0,
+        ge=0,
+        description="Flat standing charge added once for the whole period.",
     )
 
 
 # =========================================================
-# SEASON FUNCTION
+# PREDICTION INTERNALS
 # =========================================================
 
-def get_season(month: int) -> int:
 
-    # Dec, Jan, Feb
-    if month in [12, 1, 2]:
-        return 0
-
-    # Mar, Apr, May
-    elif month in [3, 4, 5]:
-        return 1
-
-    # Jun, Jul, Aug
-    elif month in [6, 7, 8]:
-        return 2
-
-    # Sep, Oct, Nov
-    else:
-        return 3
-
-
-# =========================================================
-# FEATURE ENGINEERING
-# =========================================================
-
-def create_prediction_features(
-    consumption: List[float],
-    target_date: date
-):
-
-    if len(consumption) != 30:
+def _validate_target(target: pd.Timestamp) -> None:
+    """Reject target dates the model was not built to serve."""
+    if target < DATASET_START:
         raise ValueError(
-            "Exactly 30 consumption values are required."
+            f"Target date {target.date().isoformat()} is before the start of the "
+            f"supported dataset range ({DATASET_START.date().isoformat()} to "
+            f"{DATASET_END.date().isoformat()})."
+        )
+    if target > DATASET_END:
+        raise ValueError(
+            f"Target date {target.date().isoformat()} is after the end of the "
+            f"supported dataset range ({DATASET_START.date().isoformat()} to "
+            f"{DATASET_END.date().isoformat()})."
         )
 
-    values = np.array(
-        consumption,
-        dtype=float
-    )
 
+def _validate_values(values: np.ndarray) -> None:
+    if len(values) != CONTEXT_WINDOW:
+        raise ValueError(f"Exactly {CONTEXT_WINDOW} consumption values are required.")
     if not np.isfinite(values).all():
+        raise ValueError("Consumption values must be finite numbers.")
+    if (values < 0).any():
+        raise ValueError("Consumption values cannot be negative.")
+
+
+def _history_series(target: pd.Timestamp, values: np.ndarray) -> pd.Series:
+    """Demo history up to ``target``, with the final window replaced.
+
+    The caller's values are written onto the **last 30 records** before the
+    target, positionally, rather than onto a synthetic run of 30 calendar
+    days. The demo series has a handful of missing calendar days, so a
+    calendar-based window can be shorter than 30 records and would change the
+    exponentially-weighted moving average's bias correction relative to
+    training. Overwriting by record position keeps the series length and
+    alignment identical to what the model was fitted on.
+    """
+    prior = DAILY[DAILY["datetime"] < target]
+    if len(prior) < CONTEXT_WINDOW:
         raise ValueError(
-            "Consumption values must be finite numbers."
+            f"Not enough history before {target.date().isoformat()}: "
+            f"{len(prior)} recorded day(s) available, {CONTEXT_WINDOW} required."
         )
 
-    if (values < 0).any():
-        raise ValueError(
-            "Consumption values cannot be negative."
-        )
+    window = prior.tail(CONTEXT_WINDOW).index
+    energy = prior.set_index("datetime")["energy_kwh"].copy()
+    energy.loc[prior.loc[window, "datetime"]] = values
+    return energy.sort_index()
+
+
+def create_prediction_features(consumption: list[float], target_date: date) -> pd.DataFrame:
+    """Build the 26-column feature row for ``target_date``."""
+    values = np.asarray(consumption, dtype=float)
+    _validate_values(values)
 
     target = pd.Timestamp(target_date)
+    _validate_target(target)
 
-    # =====================================================
-    # GET HISTORICAL DATA BEFORE TARGET DATE
-    # =====================================================
+    energy = _history_series(target, values)
+    row = build_target_features(energy, target, feature_columns=tuple(MODEL_FEATURES))
+    row.index = ["features"]
+    return row
 
-    historical = daily_data[
-        daily_data["datetime"] < target
-    ].copy()
 
-    if len(historical) < 30:
-        raise ValueError(
-            "Not enough historical data available before target date."
-        )
-
-    # =====================================================
-    # USE FULL HISTORY FOR EWM STATE
-    #
-    # The latest 30 observations are replaced with the
-    # values supplied by the API request.
-    #
-    # This preserves the historical EWM state while making
-    # the prediction use the user's latest 30-day history.
-    # =====================================================
-
-    user_start_date = target - pd.Timedelta(days=30)
-
-    historical_before_user_window = historical[
-        historical["datetime"] < user_start_date
-    ].copy()
-
-    # Create exact 30 dates immediately before target.
-    user_dates = pd.date_range(
-        start=user_start_date,
-        periods=30,
-        freq="D"
-    )
-
-    user_history = pd.DataFrame(
-        {
-            "datetime": user_dates,
-            "energy_kwh": values
-        }
-    )
-
-    # Combine historical seed + user-provided 30 days.
-    history = pd.concat(
-        [
-            historical_before_user_window,
-            user_history
-        ],
-        ignore_index=True
-    )
-
-    history = history.sort_values(
-        "datetime"
-    ).reset_index(drop=True)
-
-    energy = history["energy_kwh"]
-
-    # =====================================================
-    # CALENDAR FEATURES
-    # =====================================================
-
-    year = target.year
-    month = target.month
-    day = target.day
-    day_of_week = target.dayofweek
-    day_of_year = target.dayofyear
-    week_of_year = int(target.isocalendar().week)
-    quarter = target.quarter
-
-    is_weekend = int(
-        day_of_week >= 5
-    )
-
-    season = get_season(month)
-
-    # =====================================================
-    # LAG FEATURES
-    # =====================================================
-
-    lag_1 = energy.iloc[-1]
-    lag_2 = energy.iloc[-2]
-    lag_3 = energy.iloc[-3]
-    lag_7 = energy.iloc[-7]
-    lag_14 = energy.iloc[-14]
-    lag_21 = energy.iloc[-21]
-    lag_30 = energy.iloc[-30]
-
-    # =====================================================
-    # ROLLING FEATURES
-    # =====================================================
-
-    rolling_mean_3 = energy.tail(3).mean()
-    rolling_mean_7 = energy.tail(7).mean()
-    rolling_mean_14 = energy.tail(14).mean()
-    rolling_mean_30 = energy.tail(30).mean()
-
-    rolling_std_3 = energy.tail(3).std()
-    rolling_std_7 = energy.tail(7).std()
-    rolling_std_14 = energy.tail(14).std()
-    rolling_std_30 = energy.tail(30).std()
-
-    # Match pandas behavior.
-    rolling_std_3 = (
-        0.0 if pd.isna(rolling_std_3)
-        else rolling_std_3
-    )
-
-    rolling_std_7 = (
-        0.0 if pd.isna(rolling_std_7)
-        else rolling_std_7
-    )
-
-    rolling_std_14 = (
-        0.0 if pd.isna(rolling_std_14)
-        else rolling_std_14
-    )
-
-    rolling_std_30 = (
-        0.0 if pd.isna(rolling_std_30)
-        else rolling_std_30
-    )
-
-    # =====================================================
-    # EWM FEATURES
-    #
-    # IMPORTANT:
-    # These are now calculated using the complete historical
-    # sequence available before the target date.
-    # =====================================================
-
-    ewm_7 = energy.ewm(
-        span=7,
-        adjust=False
-    ).mean().iloc[-1]
-
-    ewm_30 = energy.ewm(
-        span=30,
-        adjust=False
-    ).mean().iloc[-1]
-
-    # =====================================================
-    # BUILD FEATURE ROW
-    # =====================================================
-
-    features = {
-
-        "year": year,
-        "month": month,
-        "day": day,
-        "day_of_week": day_of_week,
-        "day_of_year": day_of_year,
-        "week_of_year": week_of_year,
-        "quarter": quarter,
-        "is_weekend": is_weekend,
-        "season": season,
-
-        "lag_1": lag_1,
-        "lag_2": lag_2,
-        "lag_3": lag_3,
-        "lag_7": lag_7,
-        "lag_14": lag_14,
-        "lag_21": lag_21,
-        "lag_30": lag_30,
-
-        "rolling_mean_3": rolling_mean_3,
-        "rolling_mean_7": rolling_mean_7,
-        "rolling_mean_14": rolling_mean_14,
-        "rolling_mean_30": rolling_mean_30,
-
-        "rolling_std_3": rolling_std_3,
-        "rolling_std_7": rolling_std_7,
-        "rolling_std_14": rolling_std_14,
-        "rolling_std_30": rolling_std_30,
-
-        "ewm_7": ewm_7,
-        "ewm_30": ewm_30
-    }
-
-    feature_df = pd.DataFrame(
-        [features]
-    )
-
-    # Guarantee exact training feature order.
-    feature_df = feature_df[
-        EXPECTED_FEATURES
-    ]
-
-    return feature_df
+def predict_consumption(consumption: list[float], target_date: date) -> float:
+    """Predicted kWh for a single day, floored at zero."""
+    features = create_prediction_features(consumption, target_date)
+    return max(0.0, float(model.predict(features)[0]))
 
 
 # =========================================================
 # HEALTH
 # =========================================================
 
-@app.get("/health")
-def health():
 
+@app.get("/health")
+def health() -> dict[str, Any]:
     return {
         "status": "healthy",
-        "model": "Random Forest V2",
+        "model": meta.model_metadata()["production_model"],
         "model_type": type(model).__name__,
-        "features": len(EXPECTED_FEATURES)
+        "feature_count": len(MODEL_FEATURES),
+        "dataset_start": DATASET_START.date().isoformat(),
+        "dataset_end": DATASET_END.date().isoformat(),
+        "allowed_origins": ALLOWED_ORIGINS,
     }
 
 
 # =========================================================
-# MODEL INFO
+# METADATA
 # =========================================================
+
 
 @app.get("/model-info")
-def model_info():
+def model_info() -> dict[str, Any]:
+    """Model, hyper-parameters, held-out metrics and dataset provenance."""
+    return meta.model_metadata()
 
+
+@app.get("/dataset-info")
+def dataset_info() -> dict[str, Any]:
+    """Just the parts the UI needs to bound dates and label the data."""
+    payload = meta.model_metadata()
     return {
-        "model": "Random Forest V2",
-        "model_type": type(model).__name__,
-        "features": EXPECTED_FEATURES,
-        "test_mae_kwh": 4.0028,
-        "test_rmse_kwh": 5.5234,
-        "test_r2": 0.4584
+        "dataset": payload["dataset"],
+        "feature_count": payload["feature_count"],
+        "features": payload["features"],
+        "metrics": payload["metrics"],
+        "anomaly_detection": meta.anomaly_context(),
     }
 
+
+# =========================================================
+# MODEL ANALYTICS
+# =========================================================
+
+IMPORTANCE_CSV = meta.BASE_DIR / "results" / "metrics" / "feature_importance_v2.csv"
+CLUSTER_SCORES_CSV = meta.BASE_DIR / "results" / "metrics" / "cluster_scores_v2.csv"
+
+
 @app.get("/model-analytics")
-def model_analytics():
-    """Returns complete ML model benchmarks, feature importances, and cluster summaries."""
+def model_analytics() -> dict[str, Any]:
+    """Benchmarks, feature importances, clusters and anomaly tallies."""
     try:
-        metrics_dir = os.path.join(BASE_DIR, "results", "metrics")
-        
-        # 1. Model Comparison
-        comp_file = os.path.join(metrics_dir, "model_comparison_v2.csv")
-        comparison = []
-        if os.path.exists(comp_file):
-            comp_df = pd.read_csv(comp_file)
-            comparison = comp_df.to_dict(orient="records")
-            
-        # 2. Feature Importances
-        feat_file = os.path.join(metrics_dir, "feature_importance_v2.csv")
-        importances = []
-        if os.path.exists(feat_file):
-            feat_df = pd.read_csv(feat_file)
-            importances = feat_df.to_dict(orient="records")
-            
-        # 3. Cluster Summary
-        cluster_file = os.path.join(metrics_dir, "cluster_summary_v2.csv")
-        clusters = []
-        if os.path.exists(cluster_file):
-            # Parse header cleanly
-            cl_df = pd.read_csv(cluster_file)
-            clusters = [
-                {"cluster": 0, "name": "High Consumption Profile", "count": 754, "mean_kwh": 32.31, "median_kwh": 30.71, "min_kwh": 12.16, "max_kwh": 67.16},
-                {"cluster": 1, "name": "Eco / Low Usage Profile", "count": 649, "mean_kwh": 18.08, "median_kwh": 18.92, "min_kwh": 0.59, "max_kwh": 35.04}
-            ]
+        comparison = meta.metrics()
 
-        # 4. Cluster Scores
-        score_file = os.path.join(metrics_dir, "cluster_scores_v2.csv")
-        cluster_scores = []
-        if os.path.exists(score_file):
-            score_df = pd.read_csv(score_file)
-            cluster_scores = score_df.to_dict(orient="records")
+        importances: list[dict[str, Any]] = []
+        if IMPORTANCE_CSV.exists():
+            frame = pd.read_csv(IMPORTANCE_CSV)
+            frame.columns = [column.strip() for column in frame.columns]
+            name_column = frame.columns[0]
+            value_column = next(
+                (column for column in frame.columns if "importance" in column.lower()),
+                frame.columns[1],
+            )
+            for _, row in frame.iterrows():
+                importances.append(
+                    {
+                        "feature": str(row[name_column]),
+                        "importance": round(float(row[value_column]), 8),
+                    }
+                )
+            importances.sort(key=lambda item: item["importance"], reverse=True)
 
-        # 5. Anomaly Matrix Summary
-        anom_file = os.path.join(BASE_DIR, "results", "predictions", "anomalies_v2.csv")
-        anom_count = 0
-        if os.path.exists(anom_file):
-            anom_count = len(pd.read_csv(anom_file))
+        cluster_scores: list[dict[str, Any]] = []
+        if CLUSTER_SCORES_CSV.exists():
+            frame = pd.read_csv(CLUSTER_SCORES_CSV)
+            frame.columns = [str(column).strip() for column in frame.columns]
+            cluster_scores = frame.to_dict(orient="records")
+
+        anomalies = meta.anomaly_context()
 
         return {
-            "primary_model": "Random Forest V2",
-            "feature_count": len(EXPECTED_FEATURES),
-            "total_dataset_rows": len(daily_data),
+            "primary_model": meta.model_metadata()["production_model"],
+            "feature_count": len(MODEL_FEATURES),
+            "total_dataset_rows": len(DAILY),
             "model_comparison": comparison,
             "feature_importances": importances,
-            "clusters": clusters,
+            "clusters": meta.cluster_summary(),
             "cluster_scores": cluster_scores,
             "anomaly_matrix": {
-                "total_evaluations": len(daily_data),
-                "anomalies_detected": anom_count,
-                "inliers_normal": len(daily_data) - anom_count,
-                "contamination_rate": round(anom_count / len(daily_data), 4) if len(daily_data) > 0 else 0.02
-            }
+                "total_evaluations": anomalies["evaluated_rows"],
+                "anomalies_detected": anomalies["flagged_rows"],
+                "inliers_normal": anomalies["evaluated_rows"] - anomalies["flagged_rows"],
+                "contamination_rate": anomalies["flagged_rate"],
+                "configured_contamination": anomalies["contamination"],
+            },
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 # =========================================================
 # PREDICT
 # =========================================================
 
+
 @app.post("/predict")
-def predict(request: PredictionRequest):
+def predict(request: PredictionRequest) -> dict[str, Any]:
+    """Predict one day of consumption.
 
+    ``typical_error_kwh`` is the model's held-out mean absolute error, served
+    rather than hard-coded so the UI can label its error band from the model
+    itself.
+    """
     try:
+        prediction = predict_consumption(request.consumption, request.target_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail=f"Prediction error: {exc}") from exc
 
-        features = create_prediction_features(
-            request.consumption,
-            request.target_date
-        )
-
-        prediction = model.predict(
-            features
-        )[0]
-
-        prediction = max(
-            0.0,
-            float(prediction)
-        )
-
-        return {
-            "predicted_kwh": round(
-                prediction,
-                3
-            ),
-            "target_date": str(
-                request.target_date
-            ),
-            "model": "Random Forest V2"
-        }
-
-    except ValueError as e:
-
-        raise HTTPException(
-            status_code=400,
-            detail=str(e)
-        )
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Prediction error: {str(e)}"
-        )
-
-
-# =========================================================
-# BILL PREDICTION
-# =========================================================
-
-@app.post("/predict-bill")
-def predict_bill(request: BillRequest):
-
-    monthly_bill = (
-        request.predicted_kwh
-        * request.tariff_per_kwh
-    )
-
+    rf_metrics = meta.metrics()["Random Forest V2"]
     return {
-        "predicted_kwh": round(
-            request.predicted_kwh,
-            3
-        ),
-        "tariff_per_kwh": round(
-            request.tariff_per_kwh,
-            2
-        ),
-        "estimated_bill": round(
-            monthly_bill,
-            2
-        ),
-        "currency": "INR"
+        "predicted_kwh": round(prediction, 3),
+        "target_date": request.target_date.isoformat(),
+        "model": meta.model_metadata()["production_model"],
+        "typical_error_kwh": round(rf_metrics["mae_kwh"], 3),
+        "typical_error_source": "held-out test-set mean absolute error (kWh per day)",
     }
 
 
 # =========================================================
-# HISTORICAL DATA & ANOMALIES ENDPOINTS
+# BILL
 # =========================================================
 
-ANOMALIES_DATA_PATH = os.path.join(
-    BASE_DIR,
-    "results",
-    "predictions",
-    "anomalies_v2.csv"
-)
+
+@app.post("/predict-bill")
+def predict_bill(request: BillRequest) -> dict[str, Any]:
+    """Cost a flat-tariff period.
+
+    ``predicted_kwh`` is a **daily** figure. It is multiplied by ``days`` to
+    get period consumption, then rated. ``fixed_charge_per_period`` is added
+    once for the period. The response labels every intermediate quantity so
+    the UI cannot present a daily rate as a monthly total.
+    """
+    try:
+        result = compute_bill(
+            request.predicted_kwh,
+            request.tariff_per_kwh,
+            request.days,
+            request.fixed_charge_per_period,
+        )
+    except BillInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        **result,
+        "predicted_kwh": result["predicted_daily_kwh"],
+        "billing_period": f"{result['period_days']}-day period",
+        "assumptions": [
+            "Flat per-unit tariff; no time-of-use or slab banding.",
+            "fixed_charge_per_period is applied once per period, not per day.",
+            "Excludes tax, duties and any standing charge levied daily.",
+        ],
+    }
+
+
+# =========================================================
+# HISTORICAL DATA & ANOMALIES
+# =========================================================
+
 
 @app.get("/historical-data")
-def get_historical_data(limit: int = 30):
-    """Returns recent historical daily consumption data."""
+def get_historical_data(
+    limit: int = Query(30, ge=1, le=365),
+    before: str | None = Query(
+        None,
+        description=(
+            "Optional ISO date. When given, returns the `limit` records "
+            "immediately preceding that date instead of the tail of the "
+            "dataset. Lets the UI request a real historical window without "
+            "hard-coding consumption values that can go stale."
+        ),
+    ),
+) -> dict[str, Any]:
+    """Recorded daily consumption, oldest first.
+
+    Without ``before`` this returns the most recent ``limit`` days. With it,
+    the window ends the day before the supplied date, which is exactly the
+    context a prediction for that date needs.
+    """
     try:
-        data = daily_data.sort_values("datetime").tail(limit)
-        records = []
-        for idx, row in data.iterrows():
-            records.append({
-                "date": str(row["datetime"].strftime("%Y-%m-%d")),
-                "energy_kwh": round(float(row["energy_kwh"]), 3)
-            })
+        frame = DAILY
+
+        if before:
+            try:
+                cutoff = pd.Timestamp(before)
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"`before` must be an ISO date, got {before!r}",
+                ) from exc
+            if cutoff.tzinfo is not None:
+                cutoff = cutoff.tz_localize(None)
+            frame = frame[frame["datetime"] < cutoff]
+
+        records = [
+            {
+                "date": row.datetime.strftime("%Y-%m-%d"),
+                "energy_kwh": round(float(row.energy_kwh), 3),
+            }
+            for row in frame.tail(limit).itertuples(index=False)
+        ]
         return {
             "count": len(records),
-            "data": records
+            "data": records,
+            "dataset_start": DATASET_START.date().isoformat(),
+            "dataset_end": DATASET_END.date().isoformat(),
+            "total_rows": len(DAILY),
+            "requested_before": before,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
 
 @app.get("/anomalies")
-def get_anomalies():
-    """Returns real detected anomalies from Isolation Forest V2."""
-    if not os.path.exists(ANOMALIES_DATA_PATH):
-        return {"count": 0, "anomalies": []}
+def get_anomalies() -> dict[str, Any]:
+    """Days the training run's isolation forest flagged."""
+    frame = meta.anomaly_frame()
+    if frame.empty:
+        return {"count": 0, "anomalies": [], "evaluated_rows": 0, "flagged_rate": 0.0}
+
     try:
-        anom_df = pd.read_csv(ANOMALIES_DATA_PATH)
-        records = []
-        for idx, row in anom_df.iterrows():
-            records.append({
-                "date": str(row["datetime"]),
-                "energy_kwh": round(float(row["energy_kwh"]), 3),
-                "rolling_mean_7": round(float(row["rolling_mean_7"]), 3),
-                "rolling_std_7": round(float(row["rolling_std_7"]), 3),
-                "anomaly_score": round(float(row["anomaly_score"]), 6)
-            })
+        records = [
+            {
+                "date": row.datetime.strftime("%Y-%m-%d"),
+                "energy_kwh": round(float(row.energy_kwh), 3),
+                "rolling_mean_7": round(float(row.rolling_mean_7), 3),
+                "rolling_std_7": round(float(row.rolling_std_7), 3),
+                # Nine places, not six: the weakest flagged score is about
+                # -1.4e-07, and rounding that to six places yields -0.0, which
+                # reads as "not an anomaly" and breaks the sign the isolation
+                # forest's scores are defined by.
+                "anomaly_score": round(float(row.anomaly_score), 9),
+            }
+            for row in frame.itertuples(index=False)
+        ]
+        context = meta.anomaly_context()
         return {
             "count": len(records),
-            "anomalies": records
+            "anomalies": records,
+            "evaluated_rows": context["evaluated_rows"],
+            "flagged_rate": context["flagged_rate"],
+            "configured_contamination": context["contamination"],
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

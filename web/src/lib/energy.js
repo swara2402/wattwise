@@ -2,9 +2,22 @@
  * Energy domain maths + derived selectors.
  * Every number the UI shows about consumption, cost, savings or anomalies
  * is produced here so the formulas stay auditable and unit-consistent.
+ *
+ * Billing arithmetic lives in `./billing` and is re-exported below, because it
+ * mirrors `WattWise-AI/src/billing.py` and needs to stay importable without
+ * the rest of the app graph so `scripts/check-billing.mjs` can verify it.
  */
 
 import { toISODate, addDays } from './format'
+import { DEFAULT_GRID_EMISSION_FACTOR } from './constants'
+
+export {
+  computeBill,
+  roundHalfUp,
+  DEFAULT_BILLING_DAYS,
+  MAX_BILLING_DAYS,
+  BILLING_FORMULA,
+} from './billing'
 
 export const HOURS_PER_MONTH = 30
 
@@ -15,8 +28,17 @@ export function applianceMonthlyKwh(appliance, { proposed = false } = {}) {
   return dailyKwh * appliance.daysPerMonth
 }
 
-/** Roll a household of appliances into current vs proposed totals. */
-export function simulateHousehold(appliances, tariffPerKwh) {
+/** kWh saved by moving one appliance from its current to its proposed hours. */
+export function applianceSavingsKwh(appliance) {
+  return Math.max(0, applianceMonthlyKwh(appliance) - applianceMonthlyKwh(appliance, { proposed: true }))
+}
+
+/**
+ * Roll a household of appliances into current vs proposed totals.
+ * `emissionFactor` is a configurable grid assumption in kg CO2 per kWh, not
+ * a measured value; the UI labels it as such wherever it is displayed.
+ */
+export function simulateHousehold(appliances, tariffPerKwh, emissionFactor = DEFAULT_GRID_EMISSION_FACTOR) {
   const rows = appliances.map((appliance) => {
     const currentKwh = applianceMonthlyKwh(appliance)
     const proposedKwh = applianceMonthlyKwh(appliance, { proposed: true })
@@ -38,7 +60,9 @@ export function simulateHousehold(appliances, tariffPerKwh) {
   const currentCost = currentKwh * tariffPerKwh
   const proposedCost = proposedKwh * tariffPerKwh
   const savedCost = Math.max(0, currentCost - proposedCost)
-  const reductionPct = currentKwh > 0 ? Math.max(0, ((currentKwh - proposedKwh) / currentKwh) * 100) : 0
+  const savedKwh = Math.max(0, currentKwh - proposedKwh)
+  const reductionPct = currentKwh > 0 ? Math.max(0, (savedKwh / currentKwh) * 100) : 0
+  const factor = Number.isFinite(emissionFactor) ? emissionFactor : DEFAULT_GRID_EMISSION_FACTOR
 
   const ranked = [...rows].filter((r) => r.savedCost > 0.5).sort((a, b) => b.savedCost - a.savedCost)
 
@@ -51,9 +75,11 @@ export function simulateHousehold(appliances, tariffPerKwh) {
     proposedCost,
     savedCost,
     annualSavedCost: savedCost * 12,
-    savedKwh: Math.max(0, currentKwh - proposedKwh),
+    savedKwh,
     reductionPct,
-    co2SavedKg: Math.max(0, currentKwh - proposedKwh) * 0.79, // ~0.79 kg CO2 per kWh (India grid)
+    emissionFactor: factor,
+    co2SavedKg: savedKwh * factor,
+    currentCo2Kg: currentKwh * factor,
   }
 }
 
@@ -228,13 +254,13 @@ export function enrichAnomalies(rows = []) {
             : `Consumption fell ${magnitude.toFixed(0)}% below the 7-day baseline`,
         cause:
           pct >= 0
-            ? `${observed.toFixed(1)} kWh against a 7-day moving average of ${expected.toFixed(1)} kWh (${diff >= 0 ? '+' : ''}${diff.toFixed(1)} kWh, ${zScore >= 0 ? '+' : ''}${zScore.toFixed(1)}σ). ${bucket.cause}`
-            : `${observed.toFixed(1)} kWh against a 7-day moving average of ${expected.toFixed(1)} kWh. Extended vacancy, a power interruption or a thermostat shut-down are the usual explanations.`,
+            ? `${observed.toFixed(1)} kWh against a 7-day moving average of ${expected.toFixed(1)} kWh (${diff >= 0 ? '+' : ''}${diff.toFixed(1)} kWh, ${zScore >= 0 ? '+' : ''}${zScore.toFixed(1)}σ). Possible cause: ${bucket.cause}`
+            : `${observed.toFixed(1)} kWh against a 7-day moving average of ${expected.toFixed(1)} kWh. Possible explanation: Extended vacancy, a power interruption or a thermostat shut-down are common scenarios.`,
         action:
           pct >= 0
             ? 'Open the sub-circuit for the day, identify the highest-wattage device, and re-run this window with a shorter duty cycle.'
             : 'Confirm the meter read and check that always-on loads (fridge, router, geyser pilot) are behaving normally.',
-        wastedKwh: Math.max(0, diff),
+        excessKwh: Math.max(0, diff),
       }
     })
     .sort((a, b) => {
@@ -246,20 +272,20 @@ export function enrichAnomalies(rows = []) {
 
 export function anomalySummary(anomalies = [], tariff = 0) {
   const bySeverity = (level) => anomalies.filter((a) => a.severity === level).length
-  const wastedKwh = sum(anomalies.map((a) => a.wastedKwh))
+  const excessKwh = sum(anomalies.map((a) => a.excessKwh))
   return {
     total: anomalies.length,
     critical: bySeverity('CRITICAL'),
     high: bySeverity('HIGH'),
     medium: bySeverity('MEDIUM'),
     low: bySeverity('LOW'),
-    wastedKwh,
-    wastedCost: wastedKwh * tariff,
+    excessKwh,
+    excessCost: excessKwh * tariff,
     mostSevere: anomalies[0] ?? null,
   }
 }
 
-/** Prediction interval from the model's held-out MAE. */
+/** Typical test error band from the model's held-out MAE. */
 export function predictionBand(predictedKwh, mae, rmse) {
   const low = Math.max(0, predictedKwh - mae)
   const high = predictedKwh + mae

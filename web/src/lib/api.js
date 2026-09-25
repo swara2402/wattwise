@@ -4,7 +4,25 @@
  * into human-readable messages the UI can show verbatim.
  */
 
-export const API_BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
+/**
+ * Resolve the backend origin.
+ *
+ * In a production build the backend URL must be supplied explicitly. Silently
+ * falling back to localhost would make the deployed app appear broken in a way
+ * that is very hard to debug from the UI, so we fail loudly at module load
+ * instead. Development keeps the localhost default for convenience.
+ */
+function resolveApiBase() {
+  const configured = import.meta.env.VITE_API_URL?.trim()
+  if (configured) return configured.replace(/\/$/, '')
+  if (import.meta.env.DEV) return 'http://127.0.0.1:8000'
+  throw new Error(
+    'VITE_API_URL is not set. Copy web/.env.example to web/.env.local and point it at your ' +
+      'deployed FastAPI origin, e.g. https://wattwise-api.onrender.com',
+  )
+}
+
+export const API_BASE = resolveApiBase()
 
 export class ApiError extends Error {
   constructor(message, { status = 0, offline = false } = {}) {
@@ -83,14 +101,29 @@ export const api = {
 
   modelAnalytics: (signal) => request('/model-analytics', { signal }),
 
-  historical: (limit = 60, signal) =>
-    request(`/historical-data?limit=${limit}`, { signal }).then((d) => ({
+  datasetInfo: (signal) => request('/dataset-info', { signal }),
+
+  /**
+   * Recorded daily consumption.
+   *
+   * Without `before` this returns the most recent `limit` days. With it, the
+   * window ends the day before that date — which is the context a prediction
+   * for that date needs. Presets use this so no consumption values are ever
+   * hard-coded in the frontend.
+   */
+  historical: (limit = 60, before = null, signal) => {
+    const query = new URLSearchParams({ limit: String(limit) })
+    if (before) query.set('before', before)
+    return request(`/historical-data?${query.toString()}`, { signal }).then((d) => ({
       count: d?.count ?? 0,
       data: asArray(d?.data).map((row) => ({
         date: row.date,
         energy_kwh: Number(row.energy_kwh),
       })),
-    })),
+      dataset_start: d?.dataset_start ?? null,
+      dataset_end: d?.dataset_end ?? null,
+    }))
+  },
 
   anomalies: (signal) =>
     request('/anomalies', { signal }).then((d) => ({
@@ -111,10 +144,29 @@ export const api = {
       signal,
     }),
 
-  predictBill: (predictedKwh, tariffPerKwh, signal) =>
+  /**
+   * Price a forecast. `days` is the billing period length and the fixed
+   * charge is added once per period, not per day. The backend is the
+   * authority on the arithmetic; the response is normalised to the shape the
+   * UI renders, and the deprecated `monthly_units` field is dropped.
+   */
+  predictBill: (predictedKwh, tariffPerKwh, { days = 30, fixedChargePerPeriod = 0 } = {}, signal) =>
     request('/predict-bill', {
       method: 'POST',
-      body: { predicted_kwh: predictedKwh, tariff_per_kwh: tariffPerKwh },
+      body: {
+        predicted_kwh: predictedKwh,
+        tariff_per_kwh: tariffPerKwh,
+        days,
+        fixed_charge_per_period: fixedChargePerPeriod,
+      },
       signal,
-    }),
+    }).then((d) => ({
+      bill: Number(d?.estimated_bill),
+      energyCharge: Number(d?.energy_charge),
+      fixedCharge: Number(d?.fixed_charge),
+      consumptionKwh: Number(d?.consumption_kwh),
+      days: Number(d?.days),
+      tariffPerKwh: Number(d?.tariff_per_kwh),
+      period: d?.period ?? `${d?.days}-day`,
+    })),
 }

@@ -32,12 +32,12 @@ const FEATURES = [
       'Drag any appliance duty cycle and watch monthly rupees, energy and CO₂ update instantly. Save plans and compare them side by side.',
   },
   {
-    to: '/waste',
+    to: '/anomalies-excess',
     icon: ShieldCheck,
-    title: 'Waste & Anomaly Detection',
+    title: 'Excess & Anomaly Detection',
     tone: 'danger',
     description:
-      'An Isolation Forest scores every historical day. Outliers come with a plain-English cause and a concrete fix.',
+      'An Isolation Forest scores every historical day. Outliers come with a plain-English possible cause and a concrete fix.',
   },
   {
     to: '/predictor',
@@ -50,7 +50,7 @@ const FEATURES = [
   {
     to: '/advisor',
     icon: Sparkles,
-    title: 'AI Energy Advisor',
+    title: 'Energy Advisor',
     tone: 'violet',
     description:
       'Prioritised actions ranked by rupees saved. One click applies the change straight into your simulator profile.',
@@ -79,7 +79,7 @@ const STEPS = [
     body: 'Log your appliances once. WattWise converts power ratings and duty cycles into a monthly energy and rupee model.',
   },
   {
-    title: 'Catch the waste early',
+    title: 'Catch excess usage early',
     body: 'Anomalies surface days that broke the baseline — phantom base load, a forgotten geyser, a failing fridge seal.',
   },
   {
@@ -140,7 +140,7 @@ export function HomePage() {
 
             <p className="mt-4 max-w-xl text-[0.98rem] leading-relaxed text-fg-muted">
               WattWise runs a Random Forest over your daily consumption, an Isolation Forest over the same
-              history to hunt waste, and a what-if simulator that prices every change in rupees — before you
+              history to detect excess usage, and a what-if simulator that prices every change in rupees — before you
               make it.
             </p>
 
@@ -202,7 +202,7 @@ export function HomePage() {
             <div className="mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4">
               <div>
                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-fg-subtle">
-                  Projected bill
+                  7-day bill
                 </p>
                 <p className="stat-value mt-1 text-[1.05rem]">{money(projectedBill)}</p>
               </div>

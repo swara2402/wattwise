@@ -37,7 +37,7 @@ export default function App() {
                 <Route index element={<HomePage />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
-                <Route path="/waste" element={<WastePage />} />
+                <Route path="/anomalies-excess" element={<WastePage />} />
                 <Route path="/simulator" element={<SimulatorPage />} />
                 <Route path="/predictor" element={<PredictorPage />} />
                 <Route path="/advisor" element={<AdvisorPage />} />

@@ -238,6 +238,9 @@ export function AppProvider({ children }) {
       online,
       simulation,
       tariff,
+      fixedCharges,
+      billingDays,
+      carbonIntensity,
     ],
   )
 
