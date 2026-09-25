@@ -65,7 +65,8 @@ DEFAULT_CORS_ORIGINS = (
     "http://127.0.0.1:3000",
     "http://127.0.0.1:8000",
     "https://wattwise-ai.vercel.app",  # Legacy deployment URL
-    "https://web-24f6gbeec-swara2402s-projects.vercel.app",  # Current deployment URL - update this to your actual Vercel URL
+    "https://web-24f6gbeec-swara2402s-projects.vercel.app",  # Previous deployment URL
+    "https://web-jn56h2841-swara2402s-projects.vercel.app",  # Current deployment URL
 )
 
 
