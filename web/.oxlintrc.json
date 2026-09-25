@@ -10,5 +10,5 @@
     "no-self-compare": "error",
     "no-unsafe-optional-chaining": "error"
   },
-  "ignorePatterns": ["dist", "node_modules"]
+  "ignorePatterns": ["dist", "node_modules", "scripts"]
 }

@@ -6,6 +6,8 @@ import {
   SIM_PRESETS,
   STORAGE_KEYS,
 } from '../lib/constants'
+import { DEFAULT_GRID_EMISSION_FACTOR } from '../lib/constants'
+import { reviveAppliances, reviveScenarios, reviveSettings } from '../lib/schema'
 import { simulateHousehold } from '../lib/energy'
 import { readStore, usePersistentState, writeStore } from '../lib/storage'
 import { useResource } from '../hooks/useResource'
@@ -28,7 +30,7 @@ export function AppProvider({ children }) {
   }, [theme])
 
   /* ---------------- household settings ---------------- */
-  const [settings, setSettings] = usePersistentState(STORAGE_KEYS.settings, DEFAULT_SETTINGS)
+  const [settings, setSettings] = usePersistentState(STORAGE_KEYS.settings, DEFAULT_SETTINGS, reviveSettings)
 
   const updateSettings = useCallback(
     (patch) => setSettings((prev) => ({ ...prev, ...patch })),
@@ -38,7 +40,11 @@ export function AppProvider({ children }) {
   const resetSettings = useCallback(() => setSettings(DEFAULT_SETTINGS), [setSettings])
 
   /* ---------------- appliances ---------------- */
-  const [appliances, setAppliances] = usePersistentState(STORAGE_KEYS.appliances, DEFAULT_APPLIANCES)
+  const [appliances, setAppliances] = usePersistentState(
+    STORAGE_KEYS.appliances,
+    DEFAULT_APPLIANCES,
+    reviveAppliances,
+  )
 
   const addAppliance = useCallback(
     (appliance) =>
@@ -106,7 +112,7 @@ export function AppProvider({ children }) {
   )
 
   /* ---------------- scenarios ---------------- */
-  const [scenarios, setScenarios] = usePersistentState(STORAGE_KEYS.scenarios, DEFAULT_SCENARIOS)
+  const [scenarios, setScenarios] = usePersistentState(STORAGE_KEYS.scenarios, DEFAULT_SCENARIOS, reviveScenarios)
 
   const addScenario = useCallback(
     (scenario) =>
@@ -168,7 +174,14 @@ export function AppProvider({ children }) {
 
   /* ---------------- derived simulation ---------------- */
   const tariff = Number(settings.electricityTariff) || 0
-  const simulation = useMemo(() => simulateHousehold(appliances, tariff), [appliances, tariff])
+  // Fixed charges are added once per billing period, not once per day.
+  const fixedCharges = Number(settings.fixedCharges) || 0
+  const billingDays = Number(settings.billingDays) || 30
+  const carbonIntensity = Number(settings.carbonIntensity) || DEFAULT_GRID_EMISSION_FACTOR
+  const simulation = useMemo(
+    () => simulateHousehold(appliances, tariff, { fixedCharges, billingDays, carbonIntensity }),
+    [appliances, tariff, fixedCharges, billingDays, carbonIntensity],
+  )
 
   const value = useMemo(
     () => ({
@@ -196,6 +209,9 @@ export function AppProvider({ children }) {
       health: { ...health, online },
       simulation,
       tariff,
+      fixedCharges,
+      billingDays,
+      carbonIntensity,
     }),
     [
       theme,

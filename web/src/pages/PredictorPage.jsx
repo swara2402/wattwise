@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
-import { BrainCircuit, Dices, Info, RefreshCw, Sparkles, Target, TriangleAlert } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { BrainCircuit, Dices, Info, Loader2, RefreshCw, Sparkles, Target, TriangleAlert } from 'lucide-react'
 import { Card, PageHeader } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -10,10 +10,9 @@ import { useApp } from '../context/AppContext'
 import { useHistorical, useModelInfo } from '../hooks/useEnergyData'
 import { api } from '../lib/api'
 import { predictionBand } from '../lib/energy'
-import { BENCHMARK_30_DAY, PREDICTOR_PRESETS } from '../lib/constants'
+import { PREDICTOR_PRESETS, STORAGE_KEYS } from '../lib/constants'
 import { formatDate, kwh as fmtKwh, money, num, toISODate, addDays } from '../lib/format'
 import { usePersistentState } from '../lib/storage'
-import { STORAGE_KEYS } from '../lib/constants'
 import { useDebouncedValue } from '../hooks/useUi'
 
 const DAY_COUNT = 30
@@ -24,30 +23,43 @@ const clampDay = (value) => {
   return Math.min(200, parsed)
 }
 
+const round3 = (v) => Math.round(v * 1000) / 1000
+
 export function PredictorPage() {
-  const { tariff, health, toast, settings } = useApp()
-  const history = useHistorical(30)
+  const { tariff, fixedCharges, health, toast, settings } = useApp()
+  const history = useHistorical(DAY_COUNT)
   const modelInfo = useModelInfo()
 
   const [values, setValues] = usePersistentState(STORAGE_KEYS.predictor, {
-    days: BENCHMARK_30_DAY,
-    targetDate: '2010-04-24',
+    days: [],
+    targetDate: '',
+    preset: 'benchmark',
   })
-  const [activePreset, setActivePreset] = useState('benchmark')
   const [tariffOverride, setTariffOverride] = useState(null)
   const [result, setResult] = useState(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState(null)
   const [runHistory, setRunHistory] = useState([])
   const [activeIndex, setActiveIndex] = useState(DAY_COUNT - 1)
+  const [resolving, setResolving] = useState(false)
   const gridRef = useRef(null)
 
   // Derived rather than mirrored in state: changing the household tariff in
   // Settings immediately re-prices the forecast without an effect round-trip.
   const localTariff = tariffOverride ?? tariff
+  const localFixed = Number(fixedCharges) || 0
+  const billDays = Number(result?.billDays ?? settings.billingDays) || 30
 
-  const days = values.days?.length === DAY_COUNT ? values.days : BENCHMARK_30_DAY
-  const targetDate = values.targetDate || '2010-04-24'
+  const days = values.days?.length === DAY_COUNT ? values.days : []
+  const split = modelInfo.data?.split
+  const testSplit = split?.boundaries?.test
+  const testStartDate = testSplit?.start_date ?? null
+  const datasetStart = modelInfo.data?.dataset?.start_date ?? null
+  const datasetEnd = modelInfo.data?.dataset?.end_date ?? null
+  const targetDate = values.targetDate || ''
+  
+  // Benchmark 30-day window from the held-out test split
+  const BENCHMARK_30_DAY = testSplit?.values ?? Array(30).fill('')
 
   const debouncedValues = useDebouncedValue(days, 250)
 
@@ -93,29 +105,55 @@ export function PredictorPage() {
     toast({ title: '30 values applied', description: 'The grid now uses your pasted series.' })
   }
 
-  const applyPreset = async (preset) => {
-    setActivePreset(preset.id)
-    if (preset.id === 'history') {
-      const data = history.data?.data ?? []
-      if (data.length < DAY_COUNT) {
-        toast({
-          title: 'History unavailable',
-          description: 'The backend did not return 30 days. Using the validated benchmark instead.',
-          tone: 'warn',
-        })
-        return
+  /**
+   * Resolve a declarative preset against the live API.
+   *
+   * `PREDICTOR_PRESETS` names a window rather than listing values, so the
+   * numbers on screen are always the dataset's own. This is what keeps the
+   * presets from drifting out of sync with the data and the split.
+   */
+  const resolvePreset = useCallback(
+    async (preset) => {
+      setResolving(true)
+      setError(null)
+      try {
+        const before = preset.source === 'testSplit' ? testStartDate : null
+        if (preset.source === 'testSplit' && !before) {
+          throw new Error(
+            'The held-out test window is unknown because /model-info has not loaded. Start the backend and retry.',
+          )
+        }
+        const window = await api.historical(DAY_COUNT, before)
+        const rows = window.data ?? []
+        if (rows.length < DAY_COUNT) {
+          throw new Error(
+            `The backend returned ${rows.length} of the ${DAY_COUNT} days needed. Try "Latest recorded history".`,
+          )
+        }
+        const scale = preset.scale ?? 1
+        const days_ = rows.map((row) => round3(row.energy_kwh * scale))
+        const target = toISODate(addDays(rows.at(-1).date, 1 + (preset.dateOffsetDays ?? 0)))
+        setValues((prev) => ({ ...prev, days: days_, targetDate: target, preset: preset.id }))
+        return true
+      } catch (err) {
+        setError(err.message)
+        return false
+      } finally {
+        setResolving(false)
       }
-      const recent = data.slice(-DAY_COUNT)
-      setValues((prev) => ({
-        ...prev,
-        days: recent.map((point) => point.energy_kwh),
-        targetDate: toISODate(addDays(recent.at(-1).date, 1)),
-      }))
-      toast({ title: 'Loaded latest 30 days', description: `Target date set to ${formatDate(addDays(recent.at(-1).date, 1))}.` })
-      return
+    },
+    [setValues, testStartDate],
+  )
+
+  // On first load there is no stored series, so populate the default window
+  // from the API rather than showing 30 empty boxes.
+  useEffect(() => {
+    if (days.length === DAY_COUNT) return
+    if (history.status === 'success' && testStartDate) {
+      resolvePreset(PREDICTOR_PRESETS[0])
     }
-    setValues((prev) => ({ ...prev, days: preset.build(), targetDate: preset.date ?? prev.targetDate }))
-  }
+    // Only re-run while we have no usable series.
+  }, [days.length, history.status, testStartDate, resolvePreset])
 
   const randomise = () => {
     const next = days.map((value) =>
@@ -126,9 +164,9 @@ export function PredictorPage() {
   }
 
   const resetDays = () => {
-    setValues((prev) => ({ ...prev, days: BENCHMARK_30_DAY, targetDate: '2010-04-24' }))
-    setActivePreset('benchmark')
-    toast({ title: 'Benchmark restored', tone: 'info' })
+    resolvePreset(PREDICTOR_PRESETS[0]).then((ok) => {
+      if (ok) toast({ title: 'Held-out test window restored', tone: 'info' })
+    })
   }
 
   const runPrediction = async () => {
@@ -151,7 +189,13 @@ export function PredictorPage() {
     try {
       const prediction = await api.predict(payload, targetDate)
       const predictedKwh = Number(prediction.predicted_kwh)
-      const bill = await api.predictBill(predictedKwh, Number(localTariff))
+      // The forecast is for one day, but a bill covers a period. The fixed
+      // charge is added once per period, so it is passed through rather than
+      // multiplied by the day count.
+      const bill = await api.predictBill(predictedKwh, Number(localTariff), {
+        days: billDays,
+        fixedChargePerPeriod: localFixed,
+      })
       const band = predictionBand(
         predictedKwh,
         modelInfo.data?.test_mae_kwh ?? 4.0028,
@@ -159,7 +203,11 @@ export function PredictorPage() {
       )
       const outcome = {
         predictedKwh,
-        bill: Number(bill.estimated_bill),
+        bill: bill.bill,
+        periodKwh: bill.consumptionKwh,
+        energyCharge: bill.energyCharge,
+        fixedCharge: bill.fixedCharge,
+        billDays: bill.days,
         targetDate,
         tariff: Number(localTariff),
         model: prediction.model ?? 'Random Forest V2',
@@ -171,14 +219,19 @@ export function PredictorPage() {
       setRunHistory((prev) => [outcome, ...prev].slice(0, 4))
       toast({
         title: `Forecast ready — ${fmtKwh(predictedKwh, 2)}`,
-        description: `Estimated ${money(outcome.bill)} for ${formatDate(targetDate)}.`,
+        description: `Estimated ${money(outcome.bill)} for the ${bill.days}-day period.`,
       })
     } catch (err) {
       if (err?.offline || !health.online) {
         const predictedKwh = Number((stats.average * 0.95).toFixed(3))
+        const periodKwh = Number((predictedKwh * billDays).toFixed(3))
         const outcome = {
           predictedKwh,
-          bill: Number((predictedKwh * Number(localTariff)).toFixed(2)),
+          bill: Number((periodKwh * Number(localTariff) + localFixed).toFixed(2)),
+          periodKwh,
+          energyCharge: Number((periodKwh * Number(localTariff)).toFixed(2)),
+          fixedCharge: localFixed,
+          billDays,
           targetDate,
           tariff: Number(localTariff),
           model: 'Local mean estimate',
@@ -188,7 +241,7 @@ export function PredictorPage() {
         }
         setResult(outcome)
         setError(
-          'The ML backend is offline, so this is a local mean estimate (30-day average × 0.95). Start the FastAPI service for real model output.',
+          'The ML backend is offline, so this is a local mean estimate (30-day average × 0.95) — not model output. Start the FastAPI service for a real forecast.',
         )
       } else {
         setError(err.message)
@@ -239,10 +292,26 @@ export function PredictorPage() {
               <span className="ml-1.5 text-[1.1rem] font-medium text-fg-muted">kWh</span>
             </p>
             <p className="mt-3 text-[0.85rem] text-fg-muted">
-              Estimated cost{' '}
-              <span className="stat-value text-[1.05rem] text-fg">{result ? money(result.bill, true) : '—'}</span>{' '}
-              at {money(Number(localTariff), true)}/kWh
+              Priced over {num(billDays, 0)} days at{' '}
+              {money(Number(localTariff), true)}/kWh
             </p>
+
+            {result && (
+              <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[0.8rem]">
+                <div className="flex gap-1.5">
+                  <dt className="text-fg-subtle">Energy</dt>
+                  <dd className="stat-value text-fg">{money(result.energyCharge, true)}</dd>
+                </div>
+                <div className="flex gap-1.5">
+                  <dt className="text-fg-subtle">Fixed</dt>
+                  <dd className="stat-value text-fg">{money(result.fixedCharge, true)}</dd>
+                </div>
+                <div className="flex gap-1.5">
+                  <dt className="text-fg-subtle">Total</dt>
+                  <dd className="stat-value text-fg">{money(result.bill, true)}</dd>
+                </div>
+              </dl>
+            )}
 
             {result?.band?.low != null && (
               <div className="mt-4 max-w-md">
@@ -311,19 +380,26 @@ export function PredictorPage() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {PREDICTOR_PRESETS.map((preset) => (
             <button
               key={preset.id}
               type="button"
-              onClick={() => applyPreset(preset)}
+              onClick={() => resolvePreset(preset)}
               title={preset.hint}
-              aria-pressed={activePreset === preset.id}
+              aria-pressed={values.preset === preset.id}
+              disabled={resolving}
               className="chip"
             >
               {preset.name}
             </button>
           ))}
+          {resolving && (
+            <span className="inline-flex items-center gap-1.5 text-[0.72rem] text-fg-subtle">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+              Loading real values from the dataset…
+            </span>
+          )}
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -440,9 +516,16 @@ export function PredictorPage() {
 
         <div className="space-y-4">
           <Card className="card-pad">
-            <h2 className="text-[0.98rem] font-semibold">Validated test performance</h2>
+            <h2 className="text-[0.98rem] font-semibold">Typical test error</h2>
             <p className="mt-1 text-[0.8rem] text-fg-muted">
-              Measured on the held-out 20% split. Regression has no “accuracy %”.
+              {testSplit ? (
+                <>
+                  Measured once on the held-out test split ({formatDate(testSplit.start_date)} –{' '}
+                  {formatDate(testSplit.end_date)}, {num(testSplit.rows, 0)} days). Regression has no “accuracy %”.
+                </>
+              ) : (
+                'Measured on the held-out test split. Regression has no “accuracy %”.'
+              )}
             </p>
             <dl className="mt-4 space-y-3">
               {[
@@ -485,9 +568,15 @@ export function PredictorPage() {
           <Card className="card-pad flex items-start gap-3 bg-surface-2">
             <Info className="mt-0.5 size-4 shrink-0 text-info" strokeWidth={2.2} aria-hidden="true" />
             <p className="text-[0.78rem] leading-relaxed text-fg-muted">
-              Target dates must sit inside the dataset window ({formatDate('2006-12-16')} –{' '}
-              {formatDate('2010-11-26')}) because the model reconstructs lagged and rolling features from the
-              historical series before your 30-day window. Requests outside that range are rejected with a 422.
+              {datasetStart && datasetEnd ? (
+                <>
+                  Target dates must sit inside the dataset window ({formatDate(datasetStart)} –{' '}
+                  {formatDate(datasetEnd)}) because the model reconstructs lagged and rolling features from the
+                  historical series before your 30-day window. Requests outside that range are rejected.
+                </>
+              ) : (
+                'Target dates must sit inside the dataset window, because the model reconstructs lagged and rolling features from the historical series before your 30-day window.'
+              )}
             </p>
           </Card>
 
@@ -523,8 +612,9 @@ export function PredictorPage() {
               <p className="font-semibold text-fg">Household default</p>
               <p className="mt-0.5">
                 {settings.householdName} is modelled at {money(Number(localTariff), true)}/kWh with{' '}
-                {money(Number(settings.fixedCharges || 0), true)} fixed monthly charges. Change it in Settings
-                and every page re-prices instantly.
+                {money(localFixed, true)} of fixed charges added once per{' '}
+                {num(billDays, 0)}-day period. Change it in Settings and every page
+                re-prices instantly.
               </p>
             </div>
           </Card>
