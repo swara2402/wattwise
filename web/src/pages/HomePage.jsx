@@ -157,8 +157,8 @@ export function HomePage() {
 
             <dl className="mt-9 grid max-w-lg grid-cols-3 gap-4">
               {[
-                { label: 'Test MAE', value: model ? `${model.test_mae_kwh.toFixed(2)} kWh` : '—' },
-                { label: 'R² score', value: model ? model.test_r2.toFixed(4) : '—' },
+                { label: 'Test MAE', value: model ? `${(model.test_mae_kwh ?? 0).toFixed(2)} kWh` : '—' },
+                { label: 'R² score', value: model ? (model.test_r2 ?? 0).toFixed(4) : '—' },
                 { label: 'Engineered features', value: model ? model.features.length ?? 26 : '—' },
               ].map((item) => (
                 <div key={item.label}>
