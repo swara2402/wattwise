@@ -82,7 +82,8 @@ def _cors_origins() -> list[str]:
     """
     # Force add current Vercel URL to always be included, regardless of env vars
     forced_origins = ["https://web-jn56h2841-swara2402s-projects.vercel.app"]
-    raw = os.getenv("CORS_ORIGINS", "")
+    # Hardcode CORS_ORIGINS to avoid Render environment issues
+    raw = "https://web-jn56h2841-swara2402s-projects.vercel.app,https://wattwise-ai.vercel.app,https://web-24f6gbeec-swara2402s-projects.vercel.app,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://127.0.0.1:8000,http://localhost:8000"
     configured = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
     base_origins = configured or list(DEFAULT_CORS_ORIGINS)
     # Combine forced origins with base origins, remove duplicates
