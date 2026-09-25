@@ -66,11 +66,11 @@ export function WastePage() {
     return series.map((point, index) => ({ ...point, baseline: baseline[index].energy_kwh }))
   }, [history.data])
 
-  const wasteShare = useMemo(() => {
+  const excessShare = useMemo(() => {
     const total = historyRows.reduce((s, p) => s + p.energy_kwh, 0)
     if (!total) return 0
-    return (summary.wastedKwh / total) * 100
-  }, [summary.wastedKwh, historyRows])
+    return (summary.excessKwh / total) * 100
+  }, [summary.excessKwh, historyRows])
 
   const severityOptions = useMemo(
     () =>
@@ -90,18 +90,18 @@ export function WastePage() {
       return
     }
     const csv = toCsv(
-      ['date', 'severity', 'category', 'observed_kwh', 'baseline_kwh', 'deviation_kwh', 'deviation_pct', 'z_score', 'wasted_kwh', 'wasted_cost_inr'],
+      ['date', 'severity', 'category', 'observed_kwh', 'baseline_kwh', 'deviation_kwh', 'deviation_pct', 'z_score', 'excess_kwh', 'excess_cost_inr'],
       filtered.map((a) => [
         a.date,
         a.severity,
         a.category,
-        a.observed.toFixed(3),
-        a.expected.toFixed(3),
-        a.deviationKwh.toFixed(3),
-        a.deviationPct.toFixed(2),
-        a.zScore.toFixed(2),
-        a.wastedKwh.toFixed(3),
-        (a.wastedKwh * tariff).toFixed(2),
+        (a.observed ?? 0).toFixed(3),
+        (a.expected ?? 0).toFixed(3),
+        (a.deviationKwh ?? 0).toFixed(3),
+        (a.deviationPct ?? 0).toFixed(3),
+        (a.zScore ?? 0).toFixed(3),
+        (a.excessKwh ?? 0).toFixed(3),
+        ((a.excessKwh ?? 0) * tariff).toFixed(2),
       ]),
     )
     downloadText(`wattwise_anomalies_${new Date().toISOString().slice(0, 10)}.csv`, csv)
@@ -111,9 +111,9 @@ export function WastePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Waste detection"
-        title="Anomaly & waste report"
-        subtitle="Isolation Forest scores every day against its own recent history. Anything odd gets a severity, a likely cause and a next step."
+        eyebrow="Anomalies & Excess"
+        title="Anomaly & excess usage report"
+        subtitle="Isolation Forest scores every day against its own recent history. Anything odd gets a severity, a possible explanation and a next step."
         action={
           <>
             <Segmented
@@ -146,14 +146,14 @@ export function WastePage() {
             />
             <StatCard
               label="Excess consumption"
-              value={fmtKwh(summary.wastedKwh, 1)}
-              sub={`${wasteShare.toFixed(1)}% of everything recorded`}
+              value={fmtKwh(summary.excessKwh ?? 0, 1)}
+              sub={`${(excessShare ?? 0).toFixed(1)}% of everything recorded`}
               icon={Flame}
               tone="warn"
             />
             <StatCard
-              label="Money tied up in waste"
-              value={money(summary.wastedCost)}
+              label="Money tied up in excess usage"
+              value={money(summary.excessCost)}
               sub={`at ${money(tariff, true)}/kWh`}
               icon={Coins}
               tone="accent"
@@ -305,7 +305,7 @@ export function WastePage() {
                 <div className="mt-4 rounded-xl border border-warn/25 bg-warn-soft/50 p-3.5">
                   <p className="flex items-center gap-2 text-[0.78rem] font-semibold text-warn">
                     <Lightbulb className="size-4" strokeWidth={2.2} aria-hidden="true" />
-                    Likely cause
+                    Possible explanation
                   </p>
                   <p className="mt-1.5 text-[0.82rem] leading-relaxed text-fg-muted">{selected.cause}</p>
                 </div>
@@ -324,15 +324,15 @@ export function WastePage() {
                 <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-2">
                   <div>
                     <p className="stat-value text-[1.8rem] leading-none text-danger">
-                      {money(selected.wastedKwh * tariff)}
+                      {money(selected.excessKwh * tariff)}
                     </p>
                     <p className="mt-1 text-[0.75rem] text-fg-muted">
-                      {fmtKwh(selected.wastedKwh, 1)} above baseline at {money(tariff, true)}/kWh
+                      {fmtKwh(selected.excessKwh, 1)} above baseline at {money(tariff, true)}/kWh
                     </p>
                   </div>
                   <div>
                     <p className="stat-value text-[1.2rem] leading-none text-fg-muted">
-                      {money(selected.wastedKwh * tariff * 12)}
+                      {money(selected.excessKwh * tariff * 12)}
                     </p>
                     <p className="mt-1 text-[0.75rem] text-fg-subtle">if it happened every month</p>
                   </div>
@@ -362,7 +362,7 @@ export function WastePage() {
               <EmptyState
                 icon={Info}
                 title="Select an incident"
-                description="Pick a day from the list to see the full breakdown: deviation, z-score, likely cause and the money involved."
+                description="Pick a day from the list to see the full breakdown: deviation, z-score, possible explanation and the money involved."
               />
             </Card>
           )}
