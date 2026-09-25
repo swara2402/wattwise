@@ -54,7 +54,10 @@ export function usePersistentState(key, initialValue, revive) {
   const [value, setValue] = useState(() => readStore(key, initialValue, revive))
   const first = useRef(true)
   const reviveRef = useRef(revive)
-  reviveRef.current = revive
+
+  useEffect(() => {
+    reviveRef.current = revive
+  }, [revive])
 
   useEffect(() => {
     if (first.current) {

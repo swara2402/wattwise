@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar, MobileNav } from './Sidebar'
 import { Topbar, OfflineBanner } from './Topbar'
