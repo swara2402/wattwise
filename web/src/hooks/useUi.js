@@ -8,6 +8,7 @@ export function useMediaQuery(query) {
   useEffect(() => {
     const mql = window.matchMedia(query)
     const onChange = (event) => setMatches(event.matches)
+    // Set initial value only when query changes
     setMatches(mql.matches)
     mql.addEventListener('change', onChange)
     return () => mql.removeEventListener('change', onChange)
