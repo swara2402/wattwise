@@ -1,7 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List
 from datetime import date
@@ -471,25 +469,6 @@ def model_analytics():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# =========================================================
-# SERVE FRONTEND STATIC FILES (MERGE FRONTEND + BACKEND)
-# =========================================================
-# Mount static assets (CSS, JS, images)
-static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'static')
-if os.path.exists(static_dir):
-    app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
-    
-    # Serve index.html for all other routes (SPA support)
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        """Serve the React SPA for all non-API routes - enables client-side routing"""
-        # Don't interfere with API endpoints
-        if full_path.startswith("api/") or full_path in ["docs", "redoc", "openapi.json"]:
-            raise HTTPException(status_code=404, detail="Not found")
-        index_path = os.path.join(static_dir, "index.html")
-        return FileResponse(index_path)
 
 
 
