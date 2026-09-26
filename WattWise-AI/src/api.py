@@ -67,7 +67,7 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:8000",  # Added fallback local origin
     "https://wattwise-ai.vercel.app",  # Legacy deployment URL
     "https://web-24f6gbeec-swara2402s-projects.vercel.app",  # Previous deployment URL
-    "https://web-jn56h2841-swara2402s-projects.vercel.app",  # Current deployment URL (fixed - removed invalid backticks)
+    "https://web-jn56h2841-swara2402s-projects.vercel.app",  # Current deployment URL
 )
 
 
