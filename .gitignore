@@ -1,34 +1,76 @@
-*.iml
-.gradle
-.kotlin
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-.env
-debug.keystore
-
-# Node / React
+# Dependencies
 node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Build & Output
 dist/
+**/dist/
+dist-ssr/
+build/
+**/build/
+out/
 .vite/
-npm-debug.log*
 
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
-.venv/
+*$py.class
+*.so
+.Python
+env/
 venv/
+ENV/
+.venv/
 .pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
 
-# ML artifacts — regenerate with train_v2.py
-# *.joblib
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.iml
+.gradle
+.kotlin
+local.properties
+
+# Operating System & Temp
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+*.crc
+
+# Data files > 100MB
+WattWise-AI/data/raw/*.txt
+data/raw/*.txt
+
+# Mobile / Android
+debug.keystore
+captures/
+.externalNativeBuild/
+.cxx/
+
