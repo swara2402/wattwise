@@ -51,7 +51,7 @@ export function MethodologyPage() {
       badge: '2,075,259 Minute Records',
       tone: 'info',
       description:
-        'Smart meter measurements collected at 1-minute intervals over 4 years from the UCI repository. Profiling identifies missing values (25,979 rows = 1.25%), structural schema, and numerical ranges across 7 electrical variables.',
+        'Smart meter measurements collected at 1-minute intervals over 4 years from the UCI repository. Profiling identifies 25,979 missing numeric entries (1.25%), structural schema, and numerical ranges across 7 electrical variables.',
       details: [
         'Raw Size: ~126.8 MB (zipped: ~20.6 MB)',
         'Attributes: Global Active Power, Reactive Power, Voltage, Global Intensity, 3 Sub-metering circuits',
