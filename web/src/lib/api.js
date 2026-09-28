@@ -181,11 +181,11 @@ export const api = {
     }).then((d) => ({
       bill: Number(d?.estimated_bill),
       energyCharge: Number(d?.energy_charge),
-      fixedCharge: Number(d?.fixed_charge),
+      fixedCharge: Number(d?.fixed_charge_per_period),
       consumptionKwh: Number(d?.consumption_kwh),
-      days: Number(d?.days),
+      days: Number(d?.period_days),
       tariffPerKwh: Number(d?.tariff_per_kwh),
-      period: d?.period ?? `${d?.days}-day`,
+      period: d?.billing_period ?? `${d?.period_days}-day`,
     })),
 
   /**
