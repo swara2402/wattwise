@@ -116,7 +116,7 @@ def load_dataset(spark: SparkSession, raw_path: Path, zip_path: Path, processed_
 def preprocess_data(spark: SparkSession, df_raw, is_raw: bool):
     """
     Stage 3: Data Preprocessing
-    Parses timestamps, handles missing '?' values, casts numeric columns, removes nulls.
+    Parses timestamps, converts '?' to null, casts numeric columns, fills sub-metering gaps with zero, and excludes records with missing active power because Spark's distributed pipeline does not perform the separate Pandas time interpolation used by the daily training pipeline.
     """
     start_time = time.time()
     print("\n" + "=" * 60)
@@ -142,14 +142,16 @@ def preprocess_data(spark: SparkSession, df_raw, is_raw: bool):
             to_timestamp(concat_ws(" ", col("Date"), col("Time")), "d/M/yyyy HH:mm:ss")
         )
 
-        # Filter out invalid records with missing timestamps or missing active power
+        # Keep valid timestamps and non-missing active power. Missing active-power
+        # records are excluded in this Spark pipeline; the daily training pipeline
+        # has its own time-based interpolation stage.
         df_clean = df_clean.filter(
             col("timestamp").isNotNull() &
             col("Global_active_power").isNotNull() &
             (col("Global_active_power") >= 0)
         )
 
-        # Fill sub-metering nulls with 0
+        # Fill missing sub-metering values with 0 for the distributed aggregation.
         for sm in ["Sub_metering_1", "Sub_metering_2", "Sub_metering_3"]:
             df_clean = df_clean.fillna(0.0, subset=[sm])
 
