@@ -55,7 +55,7 @@ export function MethodologyPage() {
       details: [
         'Raw Size: ~126.8 MB (zipped: ~20.6 MB)',
         'Attributes: Global Active Power, Reactive Power, Voltage, Global Intensity, 3 Sub-metering circuits',
-        'Missing Values: 25,979 rows marked with "?" symbols',
+        'Missing Values: 25,979 numeric entries marked with "?" symbols',
       ],
     },
     {
@@ -65,9 +65,9 @@ export function MethodologyPage() {
       badge: 'Zero Null Values Remaining',
       tone: 'brand',
       description:
-        'Cleaning handles missing data via time-based linear interpolation (clamped at a 60-minute limit). Data types are cast from strings to double-precision floats, and invalid negative readings are removed.',
+        'The main training pipeline uses bounded time-based linear interpolation for short missing runs. The separate PySpark pipeline does not interpolate active power; it excludes rows with missing active power and fills missing sub-metering values with zero.',
       details: [
-        'PySpark MLlib / Pandas linear interpolation',
+        'PySpark cleaning plus Pandas time interpolation in the main training pipeline',
         'Schema Validation & Timestamp indexing',
         'Cleaned Record Count: 2,049,280 valid minute readings',
       ],
@@ -155,7 +155,7 @@ export function MethodologyPage() {
       details: [
         'Isolation Forest: Configured contamination rate of ' + (isoContamination != null ? (isoContamination * 100).toFixed(1) : '—') + '%',
         'K-Means Clustering: 2 dominant modes (Lower vs Higher consumption)',
-        'Root Cause Mapping: Outliers mapped to plain-English explanations & severity ratings',
+        'Heuristic Mapping: Outliers receive plain-English explanations & severity ratings; these are not confirmed physical root causes',
       ],
     },
     {
