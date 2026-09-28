@@ -36,6 +36,12 @@ export function MethodologyPage() {
   const pipeData = pipeline.data
   const infoData = info.data
   const statsData = stats.data
+  const modelMetrics = infoData?.metrics ?? {}
+  const split = infoData?.split
+  const rfMetrics = modelMetrics['Random Forest V2']
+  const baselineMetrics = modelMetrics['Naive Baseline']
+  const xgbMetrics = modelMetrics['XGBoost V2']
+  const isoContamination = infoData?.companion_models?.['Isolation Forest']?.contamination
 
   const PIPELINE_STEPS = [
     {
@@ -118,24 +124,24 @@ export function MethodologyPage() {
       description:
         'Strict chronological partitioning prevents temporal data leakage. Models are trained on the first 70% of historical days, hyperparameter-tuned on 15% validation, and scored once on the final 15% held-out test split.',
       details: [
-        'Training Split: 1,003 rows (70%)',
-        'Validation Split: 215 rows (15%)',
-        'Held-Out Test Split: 215 rows (15%) — zero future shuffling',
+        `Training Split: ${split?.training_rows?.toLocaleString() ?? '—'} rows (70%)`,
+        `Validation Split: ${split?.validation_rows?.toLocaleString() ?? '—'} rows (15%)`,
+        `Held-Out Test Split: ${split?.test_rows?.toLocaleString() ?? '—'} rows (15%) — zero future shuffling`,
       ],
     },
     {
       num: '07',
       title: 'Supervised ML Ensembling & Evaluation',
       icon: BrainCircuit,
-      badge: 'Random Forest V2 (MAE = 4.00 kWh)',
+      badge: rfMetrics ? 'Random Forest V2 (MAE = ' + rfMetrics.mae_kwh.toFixed(2) + ' kWh)' : 'Random Forest V2',
       tone: 'accent',
       description:
-        'Trains Naive Baseline, Random Forest (400 trees), and XGBoost Regressors. Evaluates performance using MAE, RMSE, and R² on held-out test data. Random Forest V2 achieves the lowest MAE (4.00 kWh) and highest R² (0.458) and is deployed for inference.',
+        'Trains a naive baseline, Random Forest and XGBoost regressors. Performance is evaluated with MAE, RMSE and R² on the chronological held-out test set. The production Random Forest is the model served by the FastAPI prediction endpoint.',
       details: [
-        'Naive Baseline: MAE = 4.75 kWh | RMSE = 6.81 kWh | R² = 0.176',
-        'Random Forest V2: MAE = 4.00 kWh | RMSE = 5.52 kWh | R² = 0.458',
-        'XGBoost V2: MAE = 4.13 kWh | RMSE = 5.77 kWh | R² = 0.409',
-        'PySpark MLlib RF: MAE = 0.35 kWh | RMSE = 0.49 kWh | R² = 0.600 (hourly)',
+        'Naive Baseline: MAE = ' + (baselineMetrics ? baselineMetrics.mae_kwh.toFixed(3) : '—') + ' kWh | RMSE = ' + (baselineMetrics ? baselineMetrics.rmse_kwh.toFixed(3) : '—') + ' kWh | R² = ' + (baselineMetrics ? baselineMetrics.r2.toFixed(3) : '—'),
+        'Random Forest V2: MAE = ' + (rfMetrics ? rfMetrics.mae_kwh.toFixed(3) : '—') + ' kWh | RMSE = ' + (rfMetrics ? rfMetrics.rmse_kwh.toFixed(3) : '—') + ' kWh | R² = ' + (rfMetrics ? rfMetrics.r2.toFixed(3) : '—'),
+        'XGBoost V2: MAE = ' + (xgbMetrics ? xgbMetrics.mae_kwh.toFixed(3) : '—') + ' kWh | RMSE = ' + (xgbMetrics ? xgbMetrics.rmse_kwh.toFixed(3) : '—') + ' kWh | R² = ' + (xgbMetrics ? xgbMetrics.r2.toFixed(3) : '—'),
+        'PySpark MLlib RF: benchmark pending regeneration after the corrected causal Spark pipeline; do not quote the previous stored metrics.',
       ],
     },
     {
@@ -147,7 +153,7 @@ export function MethodologyPage() {
       description:
         'An Isolation Forest scores every historical day to detect abnormal energy consumption events. K-Means clustering identifies baseline household consumption modes.',
       details: [
-        'Isolation Forest: Configured contamination rate of 5.0%',
+        'Isolation Forest: Configured contamination rate of ' + (isoContamination != null ? (isoContamination * 100).toFixed(1) : '—') + '%',
         'K-Means Clustering: 2 dominant modes (Lower vs Higher consumption)',
         'Root Cause Mapping: Outliers mapped to plain-English explanations & severity ratings',
       ],
@@ -299,9 +305,9 @@ export function MethodologyPage() {
               <tr className="hover:bg-surface-2/50">
                 <td className="p-3 font-semibold text-fg">Naive Baseline</td>
                 <td className="p-3 text-fg-muted">Daily kWh (Lag-1)</td>
-                <td className="p-3 font-mono">4.755 kWh</td>
-                <td className="p-3 font-mono">6.811 kWh</td>
-                <td className="p-3 font-mono">0.1764</td>
+                <td className="p-3 font-mono">{baselineMetrics ? baselineMetrics.mae_kwh.toFixed(3) + ' kWh' : '—'}</td>
+                <td className="p-3 font-mono">{baselineMetrics ? baselineMetrics.rmse_kwh.toFixed(3) + ' kWh' : '—'}</td>
+                <td className="p-3 font-mono">{baselineMetrics ? baselineMetrics.r2.toFixed(4) : '—'}</td>
                 <td className="p-3"><Badge tone="muted">Benchmark</Badge></td>
               </tr>
               <tr className="bg-brand-soft/20 hover:bg-brand-soft/30">
@@ -310,26 +316,26 @@ export function MethodologyPage() {
                   <CheckCircle2 className="size-4 text-brand" strokeWidth={2.4} />
                 </td>
                 <td className="p-3 text-fg-muted">Daily kWh (26 features)</td>
-                <td className="p-3 font-mono font-bold text-brand">4.003 kWh</td>
-                <td className="p-3 font-mono font-bold text-brand">5.523 kWh</td>
-                <td className="p-3 font-mono font-bold text-brand">0.4584</td>
+                <td className="p-3 font-mono font-bold text-brand">{rfMetrics ? rfMetrics.mae_kwh.toFixed(3) + ' kWh' : '—'}</td>
+                <td className="p-3 font-mono font-bold text-brand">{rfMetrics ? rfMetrics.rmse_kwh.toFixed(3) + ' kWh' : '—'}</td>
+                <td className="p-3 font-mono font-bold text-brand">{rfMetrics ? rfMetrics.r2.toFixed(4) : '—'}</td>
                 <td className="p-3"><Badge tone="brand">Production Served</Badge></td>
               </tr>
               <tr className="hover:bg-surface-2/50">
                 <td className="p-3 font-semibold text-fg">XGBoost V2</td>
                 <td className="p-3 text-fg-muted">Daily kWh (26 features)</td>
-                <td className="p-3 font-mono">4.133 kWh</td>
-                <td className="p-3 font-mono">5.771 kWh</td>
-                <td className="p-3 font-mono">0.4087</td>
+                <td className="p-3 font-mono">{xgbMetrics ? xgbMetrics.mae_kwh.toFixed(3) + ' kWh' : '—'}</td>
+                <td className="p-3 font-mono">{xgbMetrics ? xgbMetrics.rmse_kwh.toFixed(3) + ' kWh' : '—'}</td>
+                <td className="p-3 font-mono">{xgbMetrics ? xgbMetrics.r2.toFixed(4) : '—'}</td>
                 <td className="p-3"><Badge tone="info">Evaluated</Badge></td>
               </tr>
               <tr className="hover:bg-surface-2/50">
                 <td className="p-3 font-semibold text-fg">PySpark MLlib RandomForest</td>
                 <td className="p-3 text-fg-muted">Hourly kWh (Distributed)</td>
-                <td className="p-3 font-mono">0.347 kWh</td>
-                <td className="p-3 font-mono">0.495 kWh</td>
-                <td className="p-3 font-mono">0.6001</td>
-                <td className="p-3"><Badge tone="accent">Spark MLlib</Badge></td>
+                <td className="p-3 font-mono">—</td>
+                <td className="p-3 font-mono">—</td>
+                <td className="p-3 font-mono">—</td>
+                <td className="p-3"><Badge tone="warn">Pending regeneration</Badge></td>
               </tr>
             </tbody>
           </table>
