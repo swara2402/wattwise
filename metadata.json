@@ -1,6 +1,6 @@
 {
   "name": "WattWise AI",
-  "description": "Smarter Energy. Lower Bills. AI-powered electricity management, bill prediction, anomaly detection, and What-If savings simulator.",
+  "description": "AI-powered electricity management, consumption prediction, anomaly detection, and What-If savings simulation.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }
