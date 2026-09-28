@@ -79,6 +79,12 @@ export function ModelsPage() {
 
   const meta = { ...MODEL_FALLBACK, ...info.data }
   const model = analytics.data?.primary_model ?? analytics.data?.model ?? meta.model
+  /**
+   * Per-model metrics come from the API, keyed by `MODEL_STACK[].lookup`.
+   * A model with no row here (the clusterers, which are not regressors) is
+   * shown as unavailable rather than filled in with a remembered number.
+   */
+  const apiMetrics = info.data?.metrics ?? {}
   const productionMetrics = apiMetrics['Random Forest V2'] ?? {
     mae_kwh: meta.test_mae_kwh ?? 4.0028,
     rmse_kwh: meta.test_rmse_kwh ?? 5.5234,
@@ -90,12 +96,6 @@ export function ModelsPage() {
     R2: productionMetrics.r2,
   }
 
-  /**
-   * Per-model metrics come from the API, keyed by `MODEL_STACK[].lookup`.
-   * A model with no row here (the clusterers, which are not regressors) is
-   * shown as unavailable rather than filled in with a remembered number.
-   */
-  const apiMetrics = info.data?.metrics ?? {}
   const stackMetrics = (entry) => {
     const row = apiMetrics[entry.lookup]
     if (!row) return null
