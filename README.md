@@ -162,9 +162,9 @@ Models are trained on 70% of chronological data, validated on the next 15%, and 
 | **Naive Baseline** | Persistent (Lag-1) | 4.755 | 6.811 | 0.1764 | < 0.01s | Benchmark |
 | **Random Forest V2** | Ensembled Regressor | **4.003** | **5.523** | **0.4584** | 0.74s | **Production Served** |
 | **XGBoost V2** | Gradient Boosting | 4.133 | 5.771 | 0.4087 | 1.55s | Candidate Benchmark |
-| **PySpark MLlib RF**| Distributed Hourly | 0.347 (hourly) | 0.495 (hourly) | 0.6001 | 5.54s | Spark Pipeline |
+| **PySpark MLlib RF**| Distributed Hourly | — | — | — | — | **Pending regeneration after causal-window fix** |
 
-*Note: All performance metrics are calculated strictly on unobserved held-out test data.*
+*Note: Scikit-Learn/XGBoost metrics above are from the shipped chronological hold-out. The Spark benchmark is intentionally left blank until the corrected causal pipeline is executed and its artifacts are regenerated.*
 
 ### Top Engineered Feature Importance (Random Forest V2)
 1. `ewm_7`: Exponentially weighted 7-day average (12.11%)
