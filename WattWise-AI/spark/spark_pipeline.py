@@ -247,7 +247,23 @@ def feature_engineering_and_analytics(df_hourly):
         .otherwise("Fall")
     )
 
-    # Use one continuous chronological window across the complete series.\n    # Partitioning by year would reset lags at New Year's boundaries and make\n    # the first hours of each year inconsistent with a real time-series model.\n    w_time = Window.orderBy("datetime")\n\n    # Forecasting must be causal: every feature at time t uses observations\n    # strictly before t. The target is t+1.\n    w_3h_past = Window.orderBy("datetime").rowsBetween(-3, -1)\n    w_24h_past = Window.orderBy("datetime").rowsBetween(-24, -1)\n\n    # Lag features & target next-hour prediction\n    df_feat = df_feat \\\n        .withColumn("lag_1h", lag("energy_kwh", 1).over(w_time)) \\\n        .withColumn("lag_24h", lag("energy_kwh", 24).over(w_time)) \\\n        .withColumn("rolling_avg_3h", avg("energy_kwh").over(w_3h_past)) \\\n        .withColumn("rolling_avg_24h", avg("energy_kwh").over(w_24h_past)) \\\n        .withColumn("target_next_hour_kwh", lead("energy_kwh", 1).over(w_time))
+    # Use one continuous chronological window across the complete series.
+    # Partitioning by year would reset lags at New Year boundaries and make
+    # the first hours of each year inconsistent with a real time-series model.
+    w_time = Window.orderBy("datetime")
+
+    # Forecasting must be causal: every feature at time t uses observations
+    # strictly before t. The target is t+1.
+    w_3h_past = Window.orderBy("datetime").rowsBetween(-3, -1)
+    w_24h_past = Window.orderBy("datetime").rowsBetween(-24, -1)
+
+    # Lag features & target next-hour prediction
+    df_feat = df_feat \
+        .withColumn("lag_1h", lag("energy_kwh", 1).over(w_time)) \
+        .withColumn("lag_24h", lag("energy_kwh", 24).over(w_time)) \
+        .withColumn("rolling_avg_3h", avg("energy_kwh").over(w_3h_past)) \
+        .withColumn("rolling_avg_24h", avg("energy_kwh").over(w_24h_past)) \
+        .withColumn("target_next_hour_kwh", lead("energy_kwh", 1).over(w_time))
 
     # Drop null rows resulting from lag/lead
     df_feat = df_feat.dropna(subset=["lag_1h", "lag_24h", "target_next_hour_kwh"])
