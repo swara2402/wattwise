@@ -42,6 +42,9 @@ export function PredictorPage() {
   const [runHistory, setRunHistory] = useState([])
   const [activeIndex, setActiveIndex] = useState(DAY_COUNT - 1)
   const [resolving, setResolving] = useState(false)
+  const [horizonDays, setHorizonDays] = useState(7)
+  const [horizonResult, setHorizonResult] = useState(null)
+  const [horizonRunning, setHorizonRunning] = useState(false)
   const gridRef = useRef(null)
 
   // Derived rather than mirrored in state: changing the household tariff in
@@ -254,6 +257,32 @@ export function PredictorPage() {
       }
     } finally {
       setRunning(false)
+    }
+  }
+
+  const runHorizon = async () => {
+    const payload = days.map((value) => Number(value))
+    if (payload.length !== DAY_COUNT || payload.some((v) => !Number.isFinite(v) || v < 0)) {
+      setError('All 30 days must be finite, non-negative numbers before running a horizon forecast.')
+      return
+    }
+    if (!targetDate) {
+      setError('Pick a start date for the horizon forecast.')
+      return
+    }
+    setHorizonRunning(true)
+    setError(null)
+    try {
+      const result = await api.predictHorizon(payload, targetDate, horizonDays)
+      setHorizonResult(result)
+      toast({
+        title: `${horizonDays}-day horizon ready`,
+        description: `Total: ${fmtKwh(result.total_predicted_kwh, 2)} · Avg: ${fmtKwh(result.avg_predicted_kwh, 2)}/day`,
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setHorizonRunning(false)
     }
   }
 
@@ -532,12 +561,133 @@ export function PredictorPage() {
           >
             {running ? 'Running the model…' : 'Calculate ML prediction'}
           </Button>
+          <div className="flex items-center gap-2">
+            <select
+              id="horizon-days"
+              value={horizonDays}
+              onChange={(e) => setHorizonDays(Number(e.target.value))}
+              className="input h-9 rounded-lg px-2 py-1 text-[0.8rem]"
+              aria-label="Horizon days"
+            >
+              {[3, 5, 7, 14, 21, 30].map((d) => (
+                <option key={d} value={d}>{d} days</option>
+              ))}
+            </select>
+            <Button
+              variant="outline"
+              size="lg"
+              icon={Target}
+              onClick={runHorizon}
+              loading={horizonRunning}
+              disabled={invalidIndex >= 0}
+            >
+              Forecast {horizonDays} days
+            </Button>
+          </div>
           <p className="text-[0.75rem] text-fg-subtle">
             Sends <code className="rounded bg-surface-2 px-1 py-0.5 font-mono">POST /predict</code> then{' '}
             <code className="rounded bg-surface-2 px-1 py-0.5 font-mono">POST /predict-bill</code>
           </p>
         </div>
       </Card>
+
+      {/* ── Horizon results ──────────────────────────── */}
+      {horizonResult && (
+        <Card className="card-pad">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[0.98rem] font-semibold">{horizonResult.horizon_days}-day horizon forecast</h2>
+              <p className="mt-1 text-[0.8rem] text-fg-muted">
+                {horizonResult.start_date} → {horizonResult.end_date} · Roll-forward iterative forecast
+              </p>
+            </div>
+            <div className="flex gap-4 text-right">
+              <div>
+                <p className="text-[0.68rem] uppercase tracking-wider text-fg-subtle">Total</p>
+                <p className="stat-value mt-0.5 text-[1rem] text-brand">{fmtKwh(horizonResult.total_predicted_kwh, 2)}</p>
+              </div>
+              <div>
+                <p className="text-[0.68rem] uppercase tracking-wider text-fg-subtle">Daily avg</p>
+                <p className="stat-value mt-0.5 text-[1rem] text-accent">{fmtKwh(horizonResult.avg_predicted_kwh, 2)}</p>
+              </div>
+              {horizonResult.typical_error_kwh && (
+                <div>
+                  <p className="text-[0.68rem] uppercase tracking-wider text-fg-subtle">±MAE</p>
+                  <p className="stat-value mt-0.5 text-[1rem]">{fmtKwh(horizonResult.typical_error_kwh, 2)}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Mini bar chart */}
+          <div className="mt-5">
+            <div className="flex items-end gap-1" style={{ height: 120 }}>
+              {horizonResult.forecasts.map((f) => {
+                const maxKwh = Math.max(...horizonResult.forecasts.map((x) => x.upper_kwh ?? x.predicted_kwh))
+                const barH = maxKwh > 0 ? (f.predicted_kwh / maxKwh) * 100 : 0
+                const upperH = maxKwh > 0 ? ((f.upper_kwh ?? f.predicted_kwh) / maxKwh) * 100 : 0
+                const lowerH = maxKwh > 0 ? ((f.lower_kwh ?? f.predicted_kwh) / maxKwh) * 100 : 0
+                return (
+                  <div key={f.date} className="group relative flex flex-1 flex-col items-center gap-1" title={`${f.date}\n${fmtKwh(f.predicted_kwh, 2)}`}>
+                    <div className="relative w-full flex-1 flex items-end">
+                      {/* Error band */}
+                      {f.lower_kwh != null && (
+                        <div
+                          className="absolute inset-x-0 rounded-sm bg-brand/15"
+                          style={{ bottom: `${lowerH}%`, top: `${100 - upperH}%` }}
+                        />
+                      )}
+                      {/* Bar */}
+                      <div
+                        className="w-full rounded-t bg-brand/70 transition-all group-hover:bg-brand"
+                        style={{ height: `${barH}%`, minHeight: 2 }}
+                      />
+                    </div>
+                    <span className="text-[0.55rem] text-fg-subtle">{f.date.slice(5)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-[0.78rem]">
+              <thead>
+                <tr className="border-b border-line">
+                  <th className="pb-2 text-left text-fg-subtle font-medium">Date</th>
+                  <th className="pb-2 text-right text-fg-subtle font-medium">Predicted kWh</th>
+                  {horizonResult.forecasts[0]?.lower_kwh != null && (
+                    <>
+                      <th className="pb-2 text-right text-fg-subtle font-medium">Lower</th>
+                      <th className="pb-2 text-right text-fg-subtle font-medium">Upper</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {horizonResult.forecasts.map((f) => (
+                  <tr key={f.date} className="border-b border-line/50 last:border-0">
+                    <td className="py-1.5 text-fg-muted">{f.date}</td>
+                    <td className="py-1.5 text-right stat-value text-brand">{num(f.predicted_kwh, 3)}</td>
+                    {f.lower_kwh != null && (
+                      <>
+                        <td className="py-1.5 text-right text-fg-subtle">{num(f.lower_kwh, 3)}</td>
+                        <td className="py-1.5 text-right text-fg-subtle">{num(f.upper_kwh, 3)}</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="mt-3 text-[0.72rem] leading-relaxed text-fg-subtle">
+            <Info className="inline mr-1 size-3.5 -mt-0.5" strokeWidth={2.2} aria-hidden="true" />
+            {horizonResult.method}
+          </p>
+        </Card>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
         <Card className="card-pad">

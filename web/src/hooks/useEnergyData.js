@@ -16,3 +16,12 @@ export function useModelAnalytics() {
 export function useModelInfo() {
   return useResource('model-info', () => api.modelInfo(), { ttl: 120_000 })
 }
+
+export function useDatasetStatistics() {
+  return useResource('dataset-statistics', () => api.datasetStatistics(), { ttl: 300_000 })
+}
+
+export function usePipelineMetadata() {
+  return useResource('pipeline-metadata', () => api.pipelineMetadata(), { ttl: 300_000 })
+}
+

@@ -4,9 +4,11 @@ import {
   CalendarRange,
   Download,
   FileSpreadsheet,
+  FlaskConical,
   Info,
   Upload,
   X,
+  Zap,
 } from 'lucide-react'
 import { Card, PageHeader, StatCard } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -17,7 +19,7 @@ import { UsageAreaChart } from '../components/charts/UsageAreaChart'
 import { DistributionChart, MonthBars, WeekdayBars } from '../components/charts/BarCharts'
 import { ConsumptionHeatmap } from '../components/charts/ConsumptionHeatmap'
 import { useApp } from '../context/AppContext'
-import { useAnomalies, useHistorical } from '../hooks/useEnergyData'
+import { useAnomalies, useDatasetStatistics, useHistorical } from '../hooks/useEnergyData'
 import {
   averageByWeekday,
   enrichAnomalies,
@@ -37,15 +39,22 @@ const RANGES = [
   { value: 365, label: '12-month period' },
 ]
 
+const MAIN_TABS = [
+  { value: 'charts', label: 'Consumption charts' },
+  { value: 'stats', label: 'Statistical analysis' },
+]
+
 export function AnalyticsPage() {
   const { tariff, settings, toast } = useApp()
   const [range, setRange] = useState(90)
+  const [mainTab, setMainTab] = useState('charts')
   const [imported, setImported] = useState(null)
   const [importError, setImportError] = useState(null)
   const [importPreview, setImportPreview] = useState(null)
 
   const history = useHistorical(400)
   const anomalies = useAnomalies()
+  const statsResource = useDatasetStatistics()
 
   const source = useMemo(() => imported ?? history.data?.data ?? [], [imported, history.data])
   const sorted = useMemo(() => [...source].sort((a, b) => a.date.localeCompare(b.date)), [source])
@@ -144,6 +153,8 @@ export function AnalyticsPage() {
     })
   }
 
+  const serverStats = statsResource.data
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -152,7 +163,10 @@ export function AnalyticsPage() {
         subtitle="Where the energy goes, when it spikes, and how the current window compares with the one before it."
         action={
           <>
-            <Segmented options={RANGES} value={range} onChange={setRange} size="sm" ariaLabel="Select time range" />
+            <Segmented options={MAIN_TABS} value={mainTab} onChange={setMainTab} size="sm" ariaLabel="Analytics section" />
+            {mainTab === 'charts' && (
+              <Segmented options={RANGES} value={range} onChange={setRange} size="sm" ariaLabel="Select time range" />
+            )}
             <Button variant="outline" size="sm" icon={Download} onClick={exportCsv}>
               Export CSV
             </Button>
@@ -180,6 +194,9 @@ export function AnalyticsPage() {
 
       {importError && <ErrorState error={importError} compact />}
 
+      {mainTab === 'stats' && <StatisticalAnalysisPanel data={serverStats} loading={statsResource.isLoading} error={statsResource.error} onRetry={statsResource.refetch} />}
+
+      {mainTab === 'charts' && (<>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonStat key={i} />)
@@ -364,6 +381,201 @@ export function AnalyticsPage() {
           </div>
         </Card>
       </div>
+      </>)}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Statistical Analysis Panel
+// ---------------------------------------------------------------------------
+
+function StatisticalAnalysisPanel({ data, loading, error, onRetry }) {
+  if (loading) return (
+    <div className="space-y-4">
+      {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-2xl" />)}
+    </div>
+  )
+  if (error || !data) return <ErrorState error={error ?? 'Statistics not available. Is the backend running?'} onRetry={onRetry} />
+
+  const s = data.summary
+  const ww = data.weekday_vs_weekend
+  const sub = data.submetering
+  const corr = data.correlations
+
+  const summaryRows = [
+    { label: 'Mean', value: `${num(s.mean, 3)} kWh` },
+    { label: 'Median', value: `${num(s.median, 3)} kWh` },
+    { label: 'Std deviation (σ)', value: `${num(s.std, 3)} kWh` },
+    { label: 'Variance', value: `${num(s.variance, 3)} kWh²` },
+    { label: 'Skewness', value: num(s.skewness, 3) },
+    { label: 'Kurtosis', value: num(s.kurtosis, 3) },
+    { label: 'IQR (Q75 − Q25)', value: `${num(s.iqr, 3)} kWh` },
+    { label: 'Min / Max', value: `${num(s.min, 2)} / ${num(s.max, 2)} kWh` },
+    { label: 'Total days', value: num(s.count, 0) },
+  ]
+
+  const seasonOrder = ['Winter', 'Spring', 'Summer', 'Autumn']
+  const seasonColour = { Winter: '#60a5fa', Spring: '#34d399', Summer: '#f97316', Autumn: '#a78bfa' }
+  const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+  const submeteringSlices = [
+    { label: 'Kitchen', pct: sub?.sub_1_pct ?? 0, kwh: sub?.sub_1_kitchen_kwh ?? 0, colour: '#3b82f6' },
+    { label: 'Laundry', pct: sub?.sub_2_pct ?? 0, kwh: sub?.sub_2_laundry_kwh ?? 0, colour: '#8b5cf6' },
+    { label: 'HVAC / Water', pct: sub?.sub_3_pct ?? 0, kwh: sub?.sub_3_climate_water_kwh ?? 0, colour: '#f97316' },
+    { label: 'Unmetered', pct: sub?.unmetered_pct ?? 0, kwh: sub?.unmetered_kwh ?? 0, colour: '#6b7280' },
+  ]
+
+  const corrKeys = corr ? Object.entries(corr).filter(([k]) => k !== 'energy_kwh') : []
+
+  return (
+    <div className="space-y-6">
+      {/* Summary stat cards */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Mean daily kWh" value={num(s.mean, 2)} unit="kWh" icon={BarChart3} tone="brand" sub={`σ = ${num(s.std, 2)} kWh`} />
+        <StatCard label="Median daily kWh" value={num(s.median, 2)} unit="kWh" icon={CalendarRange} tone="info" sub={`IQR: ${num(s.q25, 2)}–${num(s.q75, 2)}`} />
+        <StatCard label="Weekend elevation" value={num((ww?.weekend_elevation_ratio ?? 1) * 100 - 100, 1)} unit="%" icon={Zap} tone="warn"
+          sub={ww ? `Weekday avg ${num(ww.weekday.mean_kwh, 2)} vs Weekend ${num(ww.weekend.mean_kwh, 2)} kWh` : ''} />
+        <StatCard label="Dataset skewness" value={num(s.skewness, 3)} icon={FlaskConical} tone="accent"
+          sub={s.skewness > 0 ? 'Right-skewed: rare high-use days pull the mean up' : 'Left-skewed: few very low-use days'} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Distribution summary table */}
+        <Card className="card-pad">
+          <h2 className="text-[0.95rem] font-semibold">Descriptive statistics</h2>
+          <p className="mt-0.5 text-[0.77rem] text-fg-subtle">Computed from all {num(s.count, 0)} recorded days</p>
+          <dl className="mt-3 divide-y divide-line">
+            {summaryRows.map((row) => (
+              <div key={row.label} className="flex items-baseline justify-between gap-3 py-1.5">
+                <dt className="text-[0.8rem] text-fg-muted">{row.label}</dt>
+                <dd className="stat-value text-right text-[0.85rem]">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+
+        {/* Weekday vs Weekend */}
+        <Card className="card-pad">
+          <h2 className="text-[0.95rem] font-semibold">Weekday vs Weekend</h2>
+          <p className="mt-0.5 text-[0.77rem] text-fg-subtle">Weekend elevation ratio: {num(ww?.weekend_elevation_ratio ?? 1, 3)}×</p>
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            {[{ label: 'Weekdays', key: 'weekday', colour: '#3b82f6' }, { label: 'Weekends', key: 'weekend', colour: '#8b5cf6' }].map(({ label, key, colour }) => {
+              const d = ww?.[key]
+              return (
+                <div key={key} className="rounded-xl border border-line bg-surface-2 p-4">
+                  <p className="text-[0.72rem] font-semibold uppercase tracking-wider" style={{ color: colour }}>{label}</p>
+                  <p className="stat-value mt-2 text-[1.5rem]" style={{ color: colour }}>{num(d?.mean_kwh ?? 0, 2)}</p>
+                  <p className="text-[0.72rem] text-fg-subtle">kWh / day (mean)</p>
+                  <dl className="mt-3 space-y-1 text-[0.75rem]">
+                    <div className="flex justify-between"><dt className="text-fg-muted">Median</dt><dd>{num(d?.median_kwh ?? 0, 2)} kWh</dd></div>
+                    <div className="flex justify-between"><dt className="text-fg-muted">Std dev</dt><dd>{num(d?.std_kwh ?? 0, 2)} kWh</dd></div>
+                    <div className="flex justify-between"><dt className="text-fg-muted">Days</dt><dd>{num(d?.count ?? 0, 0)}</dd></div>
+                  </dl>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-4">
+            <p className="text-[0.78rem] font-semibold mb-2">Day-of-week average (kWh)</p>
+            <div className="flex items-end gap-1 h-20">
+              {(data.day_of_week_breakdown ?? []).map((d) => {
+                const maxMean = Math.max(...(data.day_of_week_breakdown ?? []).map(x => x.mean_kwh))
+                const height = maxMean > 0 ? (d.mean_kwh / maxMean) * 100 : 0
+                return (
+                  <div key={d.day_index} className="flex flex-col items-center flex-1 gap-1">
+                    <div className="w-full rounded-t" style={{ height: `${height}%`, minHeight: 2, backgroundColor: d.is_weekend ? '#8b5cf6' : '#3b82f6', opacity: 0.85 }} />
+                    <span className="text-[0.6rem] text-fg-subtle">{dayOrder[d.day_index]}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Seasonal trends */}
+        <Card className="card-pad">
+          <h2 className="text-[0.95rem] font-semibold">Seasonal breakdown</h2>
+          <p className="mt-0.5 text-[0.77rem] text-fg-subtle">Mean daily kWh per meteorological season</p>
+          <ul className="mt-4 space-y-3">
+            {(data.seasonal_trends ?? []).sort((a, b) => seasonOrder.indexOf(a.season_name) - seasonOrder.indexOf(b.season_name)).map((s) => {
+              const allMeans = (data.seasonal_trends ?? []).map(x => x.mean_kwh)
+              const max = Math.max(...allMeans)
+              const pct = max > 0 ? (s.mean_kwh / max) * 100 : 0
+              const colour = seasonColour[s.season_name] ?? '#6b7280'
+              return (
+                <li key={s.season_name}>
+                  <div className="flex justify-between text-[0.8rem] mb-1">
+                    <span className="font-medium">{s.season_name}</span>
+                    <span className="text-fg-muted">{num(s.mean_kwh, 2)} kWh · {num(s.count, 0)} days</span>
+                  </div>
+                  <div className="h-2.5 w-full rounded-full bg-surface-2">
+                    <div className="h-2.5 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: colour }} />
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
+
+        {/* Submetering */}
+        <Card className="card-pad">
+          <h2 className="text-[0.95rem] font-semibold">Sub-metering breakdown</h2>
+          <p className="mt-0.5 text-[0.77rem] text-fg-subtle">Total kWh by metering circuit over the full dataset</p>
+          <ul className="mt-4 space-y-3">
+            {submeteringSlices.map((slice) => (
+              <li key={slice.label}>
+                <div className="flex justify-between text-[0.8rem] mb-1">
+                  <span className="font-medium">{slice.label}</span>
+                  <span className="text-fg-muted">{num(slice.pct, 1)}% · {num(slice.kwh, 0)} kWh</span>
+                </div>
+                <div className="h-2.5 w-full rounded-full bg-surface-2">
+                  <div className="h-2.5 rounded-full transition-all" style={{ width: `${slice.pct}%`, backgroundColor: slice.colour }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+          {sub && (
+            <p className="mt-4 text-[0.75rem] text-fg-subtle">Total active energy: {num(sub.total_kwh, 0)} kWh</p>
+          )}
+        </Card>
+      </div>
+
+      {/* Correlation table */}
+      {corrKeys.length > 0 && (
+        <Card className="card-pad">
+          <h2 className="text-[0.95rem] font-semibold">Pearson correlation with energy_kwh</h2>
+          <p className="mt-0.5 mb-3 text-[0.77rem] text-fg-subtle">How strongly each variable co-moves with daily consumption</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[0.8rem]">
+              <thead>
+                <tr className="border-b border-line">
+                  <th className="pb-2 text-left text-fg-subtle font-medium">Variable</th>
+                  <th className="pb-2 text-right text-fg-subtle font-medium">r</th>
+                  <th className="pb-2 text-left text-fg-subtle font-medium pl-4">Strength</th>
+                </tr>
+              </thead>
+              <tbody>
+                {corrKeys.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([key, val]) => {
+                  const abs = Math.abs(val)
+                  const label = abs >= 0.7 ? 'Strong' : abs >= 0.4 ? 'Moderate' : abs >= 0.2 ? 'Weak' : 'Negligible'
+                  const colour = abs >= 0.7 ? 'text-brand' : abs >= 0.4 ? 'text-accent' : abs >= 0.2 ? 'text-warn' : 'text-fg-subtle'
+                  return (
+                    <tr key={key} className="border-b border-line/50 last:border-0">
+                      <td className="py-2 font-mono text-[0.72rem] text-fg-muted">{key}</td>
+                      <td className="py-2 text-right stat-value">{num(val, 4)}</td>
+                      <td className={`py-2 pl-4 text-[0.75rem] font-medium ${colour}`}>{label}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }

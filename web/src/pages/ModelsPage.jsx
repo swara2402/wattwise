@@ -21,7 +21,7 @@ import { Segmented } from '../components/ui/Field'
 import { ErrorState, Skeleton } from '../components/ui/States'
 import { ChartFrame } from '../components/charts/ChartFrame'
 import { FeatureImportanceChart } from '../components/charts/FeatureImportanceChart'
-import { useModelAnalytics, useModelInfo } from '../hooks/useEnergyData'
+import { useModelAnalytics, useModelInfo, usePipelineMetadata } from '../hooks/useEnergyData'
 import { API_BASE } from '../lib/api'
 import { FEATURE_DESCRIPTIONS, FEATURE_GROUPS, MODEL_FALLBACK, MODEL_STACK } from '../lib/constants'
 import { formatDate, num } from '../lib/format'
@@ -74,6 +74,7 @@ const PIPELINE = [
 export function ModelsPage() {
   const info = useModelInfo()
   const analytics = useModelAnalytics()
+  const pipelineResource = usePipelineMetadata()
   const [tab, setTab] = useState('models')
 
   const meta = { ...MODEL_FALLBACK, ...info.data }
@@ -395,6 +396,27 @@ export function ModelsPage() {
             ))}
           </div>
 
+          {pipelineResource.data && (
+            <Card className="card-pad">
+              <h2 className="text-[0.98rem] font-semibold">Big Data pipeline — record tracking</h2>
+              <p className="mt-0.5 mb-4 text-[0.77rem] text-fg-subtle">Live figures from the backend — no hardcoded numbers</p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { label: 'Raw 1-min records', value: (pipelineResource.data?.raw_dataset?.raw_records ?? 0).toLocaleString(), sub: 'before cleaning' },
+                  { label: 'Missing values', value: (pipelineResource.data?.raw_dataset?.raw_missing_values ?? 0).toLocaleString(), sub: `${pipelineResource.data?.raw_dataset?.raw_missing_pct ?? 0}% of raw` },
+                  { label: 'Daily rows', value: (pipelineResource.data?.daily_aggregation?.processed_daily_records ?? 0).toLocaleString(), sub: 'after resampling' },
+                  { label: 'Engineered rows', value: (pipelineResource.data?.feature_engineering?.records_after_lag_drop ?? 0).toLocaleString(), sub: 'after lag drop' },
+                ].map(({ label, value, sub }) => (
+                  <div key={label} className="rounded-xl border border-line bg-surface-2 p-4">
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-fg-subtle">{label}</p>
+                    <p className="stat-value mt-2 text-[1.2rem] text-brand">{value}</p>
+                    <p className="mt-1 text-[0.72rem] text-fg-subtle">{sub}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
           <Card className="card-pad">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="flex items-center gap-2 text-[0.98rem] font-semibold">
@@ -412,6 +434,13 @@ GET  /model-info          → { model, hyperparameters, features[26],
                               split{boundaries}, metrics{per model},
                               dataset{date_range, rows} }
 GET  /dataset-info        → { start_date, end_date, rows, gaps }
+GET  /dataset-statistics  → { summary{mean,median,std,skew,...},
+                              weekday_vs_weekend, day_of_week_breakdown,
+                              monthly_trends, seasonal_trends,
+                              submetering, correlations }
+GET  /pipeline-metadata   → { raw_dataset, data_cleaning,
+                              daily_aggregation, feature_engineering,
+                              train_val_test_split }
 GET  /model-analytics     → { primary_model, feature_importance,
                               comparison, clusters }
 GET  /historical-data     → ?limit=30&before=YYYY-MM-DD
@@ -421,7 +450,13 @@ GET  /anomalies           → { count, anomalies: [{ date, energy_kwh,
                                     rolling_mean_7, rolling_std_7,
                                     anomaly_score }] }
 POST /predict             → { consumption: number[30], target_date: "YYYY-MM-DD" }
-                         ← { predicted_kwh, model }
+                         ← { predicted_kwh, model, typical_error_kwh }
+POST /predict-horizon     → { consumption: number[30],
+                              start_date: "YYYY-MM-DD",
+                              horizon_days: 1–30 }
+                         ← { forecasts: [{ date, step, predicted_kwh,
+                                          lower_kwh, upper_kwh }],
+                             total_predicted_kwh, avg_predicted_kwh }
 POST /predict-bill        → { predicted_kwh, tariff_per_kwh,
                               days, fixed_charge_per_period }
                          ← { estimated_bill, energy_charge,

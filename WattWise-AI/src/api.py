@@ -13,9 +13,12 @@ Design notes
 
 from __future__ import annotations
 
+import logging
 import os
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import joblib
 import numpy as np
@@ -187,6 +190,31 @@ class PredictionRequest(BaseModel):
         ...,
         description="The single day to predict.",
     )
+
+
+class HorizonPredictionRequest(BaseModel):
+    consumption: list[float] = Field(
+        ...,
+        min_length=CONTEXT_WINDOW,
+        max_length=CONTEXT_WINDOW,
+        description=(
+            f"Exactly {CONTEXT_WINDOW} daily consumption values in kWh, "
+            "oldest first."
+        ),
+    )
+
+    start_date: date = Field(
+        ...,
+        description="First day to predict.",
+    )
+
+    horizon_days: int = Field(
+        7,
+        ge=1,
+        le=30,
+        description="Number of days ahead to forecast (1 to 30).",
+    )
+
 
 
 class BillRequest(BaseModel):
@@ -791,7 +819,133 @@ def get_anomalies() -> dict[str, Any]:
         }
 
     except Exception as exc:
+        logger.exception("Unhandled error in /anomalies")
         raise HTTPException(
             status_code=500,
             detail=str(exc),
         ) from exc
+
+
+# =========================================================
+# DATASET STATISTICS
+# =========================================================
+
+
+@app.get("/dataset-statistics")
+def dataset_statistics() -> dict[str, Any]:
+    """Return rich statistical analysis of the daily consumption series.
+
+    Includes summary stats, weekday/weekend breakdown, day-of-week means,
+    monthly & seasonal trends, submetering totals and correlation with
+    voltage / intensity / reactive-power.
+    """
+    try:
+        return meta.dataset_statistics()
+    except Exception as exc:
+        logger.exception("Unhandled error in /dataset-statistics")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# =========================================================
+# PIPELINE METADATA
+# =========================================================
+
+
+@app.get("/pipeline-metadata")
+def pipeline_metadata() -> dict[str, Any]:
+    """Return the Big Data pipeline processing steps and record counts.
+
+    Shows raw → cleaned → daily → engineered row counts plus the
+    chronological train/validation/test split boundaries.  Useful for the
+    academic pipeline diagram page.
+    """
+    try:
+        return meta.pipeline_metadata()
+    except Exception as exc:
+        logger.exception("Unhandled error in /pipeline-metadata")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# =========================================================
+# HORIZON PREDICTION
+# =========================================================
+
+
+@app.post("/predict-horizon")
+def predict_horizon(
+    request: HorizonPredictionRequest,
+) -> dict[str, Any]:
+    """Iterative multi-day energy consumption forecast.
+
+    Uses the trained Random Forest in a roll-forward loop: the prediction
+    for day *N* is appended to the context window and used as the newest lag
+    for day *N+1*.  This is honest single-model extrapolation — no separate
+    sequence model is required.
+
+    Returns one entry per requested day plus the model's held-out MAE as an
+    uncertainty estimate for each step.
+    """
+    try:
+        values = np.asarray(request.consumption, dtype=float)
+        _validate_values(values)
+
+        # Compute per-day MAE from model metrics (used as uncertainty estimate)
+        try:
+            mae = float(meta.metrics()["Random Forest V2"]["mae_kwh"])
+        except (KeyError, TypeError, ValueError):
+            mae = None
+
+        # Roll-forward window: start with the supplied context
+        window: list[float] = list(values)
+        forecasts: list[dict[str, Any]] = []
+
+        current_date = request.start_date
+        for step in range(request.horizon_days):
+            target = current_date
+
+            try:
+                # Use the tail of the window as the context for this step
+                context = window[-CONTEXT_WINDOW:]
+                predicted = predict_consumption(context, target)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            entry: dict[str, Any] = {
+                "date": target.isoformat(),
+                "step": step + 1,
+                "predicted_kwh": round(predicted, 3),
+            }
+            if mae is not None:
+                entry["uncertainty_kwh"] = round(mae, 3)
+                entry["lower_kwh"] = round(max(0.0, predicted - mae), 3)
+                entry["upper_kwh"] = round(predicted + mae, 3)
+
+            forecasts.append(entry)
+
+            # Append prediction to window for next step
+            window.append(predicted)
+
+            current_date = current_date + timedelta(days=1)
+
+        total_kwh = sum(f["predicted_kwh"] for f in forecasts)
+
+        return {
+            "model": meta.model_metadata()["production_model"],
+            "start_date": request.start_date.isoformat(),
+            "end_date": (request.start_date + timedelta(days=request.horizon_days - 1)).isoformat(),
+            "horizon_days": request.horizon_days,
+            "forecasts": forecasts,
+            "total_predicted_kwh": round(total_kwh, 3),
+            "avg_predicted_kwh": round(total_kwh / request.horizon_days, 3),
+            "typical_error_kwh": round(mae, 3) if mae is not None else None,
+            "method": (
+                "Roll-forward iterative forecast: each day's prediction is fed "
+                "back as the newest lag value for the next day."
+            ),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unhandled error in /predict-horizon")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

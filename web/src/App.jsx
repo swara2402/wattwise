@@ -17,6 +17,7 @@ const SimulatorPage = lazy(() => import('./pages/SimulatorPage').then((m) => ({ 
 const PredictorPage = lazy(() => import('./pages/PredictorPage').then((m) => ({ default: m.PredictorPage })))
 const AdvisorPage = lazy(() => import('./pages/AdvisorPage').then((m) => ({ default: m.AdvisorPage })))
 const ModelsPage = lazy(() => import('./pages/ModelsPage').then((m) => ({ default: m.ModelsPage })))
+const MethodologyPage = lazy(() => import('./pages/MethodologyPage').then((m) => ({ default: m.MethodologyPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 
@@ -42,6 +43,7 @@ export default function App() {
                 <Route path="/predictor" element={<PredictorPage />} />
                 <Route path="/advisor" element={<AdvisorPage />} />
                 <Route path="/models" element={<ModelsPage />} />
+                <Route path="/methodology" element={<MethodologyPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>

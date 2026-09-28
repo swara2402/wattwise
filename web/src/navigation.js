@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Bot,
   ChartNoAxesCombined,
   Gauge,
@@ -92,6 +93,14 @@ export const NAV_SECTIONS = [
         description: 'Model benchmarks, feature importance and clusters',
         keywords: 'models rf xgboost isolation kmeans features lab',
         badge: 'AI Lab',
+      },
+      {
+        to: '/methodology',
+        label: 'Methodology & Viva',
+        icon: BookOpen,
+        description: 'Big Data pipeline, statistical design, ML metrics and viva Q&A',
+        keywords: 'methodology academic pipeline viva architecture dataset stats',
+        badge: 'SMLBDA',
       },
       {
         to: '/settings',

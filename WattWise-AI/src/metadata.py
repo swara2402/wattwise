@@ -331,3 +331,169 @@ def anomaly_context() -> dict[str, Any]:
         "score_min": round(float(ml_frame()["anomaly_score"].min()), 6),
         "score_max": round(float(ml_frame()["anomaly_score"].max()), 6),
     }
+
+
+@functools.lru_cache(maxsize=1)
+def dataset_statistics() -> dict[str, Any]:
+    """Rigorous statistical analysis computed directly from daily_frame()."""
+    df = daily_frame().copy()
+    energy = df["energy_kwh"]
+
+    q25 = float(energy.quantile(0.25))
+    q75 = float(energy.quantile(0.75))
+
+    stats_summary = {
+        "mean": round(float(energy.mean()), 3),
+        "median": round(float(energy.median()), 3),
+        "std": round(float(energy.std()), 3),
+        "variance": round(float(energy.var()), 3),
+        "min": round(float(energy.min()), 3),
+        "max": round(float(energy.max()), 3),
+        "q25": round(q25, 3),
+        "q75": round(q75, 3),
+        "iqr": round(q75 - q25, 3),
+        "skewness": round(float(energy.skew()), 3),
+        "kurtosis": round(float(energy.kurtosis()), 3),
+        "count": len(energy),
+    }
+
+    df["dt"] = pd.to_datetime(df["datetime"])
+    df["day_of_week"] = df["dt"].dt.dayofweek
+    df["is_weekend"] = df["day_of_week"].isin([5, 6])
+    df["month"] = df["dt"].dt.month
+    df["season"] = (df["month"] % 12) // 3
+
+    weekdays = df[~df["is_weekend"]]["energy_kwh"]
+    weekends = df[df["is_weekend"]]["energy_kwh"]
+
+    weekday_vs_weekend = {
+        "weekday": {
+            "count": len(weekdays),
+            "mean_kwh": round(float(weekdays.mean()), 3),
+            "median_kwh": round(float(weekdays.median()), 3),
+            "std_kwh": round(float(weekdays.std()), 3),
+        },
+        "weekend": {
+            "count": len(weekends),
+            "mean_kwh": round(float(weekends.mean()), 3),
+            "median_kwh": round(float(weekends.median()), 3),
+            "std_kwh": round(float(weekends.std()), 3),
+        },
+        "weekend_elevation_ratio": round(float(weekends.mean() / weekdays.mean()), 3) if len(weekdays) > 0 else 1.0,
+    }
+
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    dow_breakdown = []
+    for dow in range(7):
+        sub = df[df["day_of_week"] == dow]["energy_kwh"]
+        dow_breakdown.append({
+            "day_index": dow,
+            "day_name": day_names[dow],
+            "is_weekend": dow >= 5,
+            "count": len(sub),
+            "mean_kwh": round(float(sub.mean()), 3) if len(sub) > 0 else 0.0,
+            "median_kwh": round(float(sub.median()), 3) if len(sub) > 0 else 0.0,
+            "std_kwh": round(float(sub.std()), 3) if len(sub) > 0 else 0.0,
+        })
+
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    monthly_trends = []
+    for m in range(1, 13):
+        sub = df[df["month"] == m]["energy_kwh"]
+        if len(sub) > 0:
+            monthly_trends.append({
+                "month_index": m,
+                "month_name": month_names[m - 1],
+                "count": len(sub),
+                "mean_kwh": round(float(sub.mean()), 3),
+                "median_kwh": round(float(sub.median()), 3),
+            })
+
+    season_names = {0: "Winter", 1: "Spring", 2: "Summer", 3: "Autumn"}
+    seasonal_trends = []
+    for s_code, s_name in season_names.items():
+        sub = df[df["season"] == s_code]["energy_kwh"]
+        if len(sub) > 0:
+            seasonal_trends.append({
+                "season_code": s_code,
+                "season_name": s_name,
+                "count": len(sub),
+                "mean_kwh": round(float(sub.mean()), 3),
+                "median_kwh": round(float(sub.median()), 3),
+            })
+
+    # Submetering totals & breakdown (converting watt-hours per day to kWh)
+    sub1_kwh = df["sub_metering_1"].sum() / 1000.0 if "sub_metering_1" in df.columns else 0.0
+    sub2_kwh = df["sub_metering_2"].sum() / 1000.0 if "sub_metering_2" in df.columns else 0.0
+    sub3_kwh = df["sub_metering_3"].sum() / 1000.0 if "sub_metering_3" in df.columns else 0.0
+    total_active_kwh = df["energy_kwh"].sum()
+    metered_kwh = sub1_kwh + sub2_kwh + sub3_kwh
+    unmetered_kwh = max(0.0, total_active_kwh - metered_kwh)
+
+    submetering_summary = {
+        "sub_1_kitchen_kwh": round(float(sub1_kwh), 2),
+        "sub_2_laundry_kwh": round(float(sub2_kwh), 2),
+        "sub_3_climate_water_kwh": round(float(sub3_kwh), 2),
+        "unmetered_kwh": round(float(unmetered_kwh), 2),
+        "total_kwh": round(float(total_active_kwh), 2),
+        "sub_1_pct": round(float(sub1_kwh / total_active_kwh * 100), 2) if total_active_kwh > 0 else 0,
+        "sub_2_pct": round(float(sub2_kwh / total_active_kwh * 100), 2) if total_active_kwh > 0 else 0,
+        "sub_3_pct": round(float(sub3_kwh / total_active_kwh * 100), 2) if total_active_kwh > 0 else 0,
+        "unmetered_pct": round(float(unmetered_kwh / total_active_kwh * 100), 2) if total_active_kwh > 0 else 0,
+    }
+
+    num_cols = ["energy_kwh", "avg_voltage", "avg_intensity", "avg_reactive_power", "sub_metering_1", "sub_metering_2", "sub_metering_3"]
+    avail_cols = [c for c in num_cols if c in df.columns]
+    corr_matrix = df[avail_cols].corr()["energy_kwh"].to_dict()
+    correlations = {k: round(float(v), 4) for k, v in corr_matrix.items()}
+
+    return {
+        "summary": stats_summary,
+        "weekday_vs_weekend": weekday_vs_weekend,
+        "day_of_week_breakdown": dow_breakdown,
+        "monthly_trends": monthly_trends,
+        "seasonal_trends": seasonal_trends,
+        "submetering": submetering_summary,
+        "correlations": correlations,
+    }
+
+
+@functools.lru_cache(maxsize=1)
+def pipeline_metadata() -> dict[str, Any]:
+    """Big Data pipeline steps and record tracking."""
+    return {
+        "raw_dataset": {
+            "name": "UCI Individual Household Power Consumption",
+            "raw_records": 2075259,
+            "raw_missing_values": 25979,
+            "raw_missing_pct": 1.25,
+            "sampling_rate": "1-minute resolution",
+            "period": "2006-12-16 to 2010-11-26 (shifted 5844 days for recent alignment)",
+        },
+        "data_cleaning": {
+            "missing_value_method": "Time-based linear interpolation (limit=60 mins)",
+            "post_cleaning_missing_values": 0,
+            "dropped_invalid_rows": 0,
+        },
+        "daily_aggregation": {
+            "method": "Resampled to daily resolution (sum(Global_active_power)/60 for daily kWh)",
+            "processed_daily_records": len(daily_frame()),
+        },
+        "feature_engineering": {
+            "total_engineered_features": 26,
+            "context_window_days": 30,
+            "records_after_lag_drop": len(ml_frame()),
+            "feature_categories": {
+                "calendar": 9,
+                "lags": 7,
+                "rolling_means": 4,
+                "rolling_stds": 4,
+                "ewm": 2,
+            },
+        },
+        "train_val_test_split": {
+            "strategy": "Chronological (no random shuffling to prevent temporal data leakage)",
+            "split_sizes": split_sizes(),
+            "boundaries": split_boundaries(),
+        },
+    }

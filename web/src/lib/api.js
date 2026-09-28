@@ -145,6 +145,24 @@ export const api = {
     }),
 
   /**
+   * Multi-day iterative horizon forecast.
+   *
+   * Sends the 30-day context window plus a start date and number of days.
+   * The backend rolls forward day-by-day feeding each prediction back as a
+   * lag value so the model stays honest about compounding uncertainty.
+   */
+  predictHorizon: (consumption, startDate, horizonDays = 7, signal) =>
+    request('/predict-horizon', {
+      method: 'POST',
+      body: {
+        consumption,
+        start_date: startDate,
+        horizon_days: horizonDays,
+      },
+      signal,
+    }),
+
+  /**
    * Price a forecast. `days` is the billing period length and the fixed
    * charge is added once per period, not per day. The backend is the
    * authority on the arithmetic; the response is normalised to the shape the
@@ -169,4 +187,16 @@ export const api = {
       tariffPerKwh: Number(d?.tariff_per_kwh),
       period: d?.period ?? `${d?.days}-day`,
     })),
+
+  /**
+   * Full statistical analysis of the daily consumption series.
+   * Powers the Analytics page (mean/std/seasonal/submetering/correlation).
+   */
+  datasetStatistics: (signal) => request('/dataset-statistics', { signal }),
+
+  /**
+   * Big Data pipeline record counts and processing steps.
+   * Powers the pipeline diagram / academic methodology section.
+   */
+  pipelineMetadata: (signal) => request('/pipeline-metadata', { signal }),
 }
