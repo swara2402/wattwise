@@ -308,7 +308,7 @@ export function ModelsPage() {
               <p className="mt-1 text-[0.8rem] text-fg-muted">
                 K-Means segments the historical dataset into statistically distinct consumption patterns.
                 These clusters represent recurring modes in the data — not household classifications.
-                {' '}{Math.round((clusters.find((c) => c.label?.toLowerCase?.().includes('high'))?.share_of_days ?? 0) * 100)}%
+                {' '}{Math.round((clusters.find((c) => c.behaviour === 'higher_consumption')?.share_of_days ?? 0) * 100)}%
                 of recorded days fall into the higher-usage pattern.
               </p>
               <ul className="mt-4 grid gap-3 sm:grid-cols-2">
