@@ -76,14 +76,14 @@ export function MethodologyPage() {
       num: '03',
       title: 'Daily & Hourly Resampling & Aggregation',
       icon: BarChart3,
-      badge: '1,442 Daily Aggregations',
+      badge: '1,433 Daily Records',
       tone: 'accent',
       description:
         'Minute-level active power (kW) is integrated over time to yield true daily energy consumption in kilowatt-hours (kWh): Daily kWh = ∑(Global_active_power / 60).',
       details: [
-        'Resampled from 2.07M minute readings to 1,442 daily observations',
+        'Resampled from 2.07M minute readings to 1,433 retained daily observations',
         'Sub-metering values converted from Wh to kWh',
-        'Preserves calendar continuity across 2006–2010',
+        'Retains the available daily records across the 2006–2010 source period',
       ],
     },
     {
