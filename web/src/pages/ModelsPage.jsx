@@ -37,7 +37,7 @@ const PIPELINE = [
     title: 'Ingest',
     icon: Database,
     tone: 'info',
-    body: 'Household A+B+C.csv — daily kWh resampled and re-indexed onto a complete calendar. Gaps forward-filled and clamped to the 0–120 kWh sanity band.',
+    body: 'UCI household power readings are cleaned and resampled into the daily consumption table used by the forecasting model. Short missing runs are time-interpolated before aggregation; the shipped model retains the dataset\'s recorded gaps rather than inventing a complete calendar.',
   },
   {
     title: 'Engineer',
@@ -61,7 +61,7 @@ const PIPELINE = [
     title: 'Serve',
     icon: Cpu,
     tone: 'violet',
-    body: 'The winning pipeline plus its feature builder are pickled together, so inference reconstructs the same lags and rolling windows the model was trained on.',
+    body: 'The fitted Random Forest artifact is served alongside the canonical feature builder in src/features.py, so inference reconstructs the same feature contract used during training.',
   },
   {
     title: 'Monitor',
@@ -79,10 +79,15 @@ export function ModelsPage() {
 
   const meta = { ...MODEL_FALLBACK, ...info.data }
   const model = analytics.data?.primary_model ?? analytics.data?.model ?? meta.model
+  const productionMetrics = apiMetrics['Random Forest V2'] ?? {
+    mae_kwh: meta.test_mae_kwh ?? 4.0028,
+    rmse_kwh: meta.test_rmse_kwh ?? 5.5234,
+    r2: meta.test_r2 ?? 0.4584,
+  }
   const metrics = {
-    MAE: meta.test_mae_kwh ?? 4.0028,
-    RMSE: meta.test_rmse_kwh ?? 5.5234,
-    R2: meta.test_r2 ?? 0.4584,
+    MAE: productionMetrics.mae_kwh,
+    RMSE: productionMetrics.rmse_kwh,
+    R2: productionMetrics.r2,
   }
 
   /**
@@ -108,6 +113,7 @@ export function ModelsPage() {
 
   const importance = useMemo(() => {
     const rows =
+      analytics.data?.feature_importances ??
       analytics.data?.feature_importance ??
       analytics.data?.features ??
       analytics.data?.importance ??
@@ -123,7 +129,7 @@ export function ModelsPage() {
   const loading = analytics.isLoading || info.isLoading
   const failed = !loading && info.status === 'error' && analytics.status === 'error'
 
-  const featureCount = meta.features ?? FEATURE_GROUPS.reduce((s, g) => s + g.features.length, 0)
+  const featureCount = meta.feature_count ?? FEATURE_GROUPS.reduce((s, g) => s + g.features.length, 0)
 
   const tabs = [
     { value: 'models', label: 'Model stack' },
@@ -301,7 +307,7 @@ export function ModelsPage() {
               <p className="mt-1 text-[0.8rem] text-fg-muted">
                 K-Means segments the historical dataset into statistically distinct consumption patterns.
                 These clusters represent recurring modes in the data — not household classifications.
-                {' '}{Math.round((clusters.find((c) => c.label?.toLowerCase?.().includes('high'))?.share ?? 0.42) * 100)}%
+                {' '}{Math.round((clusters.find((c) => c.label?.toLowerCase?.().includes('high'))?.share_of_days ?? 0) * 100)}%
                 of recorded days fall into the higher-usage pattern.
               </p>
               <ul className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -310,14 +316,14 @@ export function ModelsPage() {
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[0.85rem] font-semibold">{cluster.label ?? cluster.name}</p>
                       <Badge tone="info">
-                        {Math.round((cluster.share ?? cluster.fraction ?? 0) * 100)}% of days
+                        {Math.round((cluster.share_of_days ?? cluster.share ?? cluster.fraction ?? 0) * 100)}% of days
                       </Badge>
                     </div>
                     <p className="stat-value mt-2 text-[1.1rem] text-fg">
                       {num(cluster.mean_kwh ?? cluster.centroid ?? 0, 2)} kWh
                     </p>
                     <p className="mt-1 text-[0.75rem] text-fg-subtle">
-                      {cluster.size ?? '—'} days in this mode
+                      {cluster.days ?? cluster.size ?? '—'} days in this mode
                     </p>
                   </li>
                 ))}
