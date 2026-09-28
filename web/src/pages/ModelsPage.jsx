@@ -21,7 +21,7 @@ import { Segmented } from '../components/ui/Field'
 import { ErrorState, Skeleton } from '../components/ui/States'
 import { ChartFrame } from '../components/charts/ChartFrame'
 import { FeatureImportanceChart } from '../components/charts/FeatureImportanceChart'
-import { useModelAnalytics, useModelInfo, usePipelineMetadata } from '../hooks/useEnergyData'
+import { useDatasetStatistics, useModelAnalytics, useModelInfo, usePipelineMetadata } from '../hooks/useEnergyData'
 import { API_BASE } from '../lib/api'
 import { FEATURE_DESCRIPTIONS, FEATURE_GROUPS, MODEL_FALLBACK, MODEL_STACK } from '../lib/constants'
 import { formatDate, num } from '../lib/format'
@@ -75,6 +75,7 @@ export function ModelsPage() {
   const info = useModelInfo()
   const analytics = useModelAnalytics()
   const pipelineResource = usePipelineMetadata()
+  const statistics = useDatasetStatistics()
   const [tab, setTab] = useState('models')
 
   const meta = { ...MODEL_FALLBACK, ...info.data }
@@ -177,7 +178,7 @@ export function ModelsPage() {
             icon: Database,
             tone: 'text-info',
           },
-          { label: 'Mean daily usage', value: num(analytics.data?.mean_kwh ?? 26.03, 2), sub: 'kWh across the dataset', icon: Timer, tone: 'text-warn' },
+          { label: 'Mean daily usage', value: num(statistics.data?.summary?.mean ?? 0, 2), sub: statistics.data ? 'kWh across the dataset' : 'Waiting for statistics', icon: Timer, tone: 'text-warn' },
         ].map((stat) => (
           <Card key={stat.label} className="card-pad">
             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-fg-subtle">{stat.label}</p>
