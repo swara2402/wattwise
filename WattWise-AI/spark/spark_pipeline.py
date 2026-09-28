@@ -247,18 +247,7 @@ def feature_engineering_and_analytics(df_hourly):
         .otherwise("Fall")
     )
 
-    # Window specifications PARTITIONED BY YEAR to eliminate PySpark global window warnings!
-    w_year = Window.partitionBy("year").orderBy("datetime")
-    w_3h = Window.partitionBy("year").orderBy("datetime").rowsBetween(-2, 0)
-    w_24h = Window.partitionBy("year").orderBy("datetime").rowsBetween(-23, 0)
-
-    # Lag features & target next-hour prediction
-    df_feat = df_feat \
-        .withColumn("lag_1h", lag("energy_kwh", 1).over(w_year)) \
-        .withColumn("lag_24h", lag("energy_kwh", 24).over(w_year)) \
-        .withColumn("rolling_avg_3h", avg("energy_kwh").over(w_3h)) \
-        .withColumn("rolling_avg_24h", avg("energy_kwh").over(w_24h)) \
-        .withColumn("target_next_hour_kwh", lead("energy_kwh", 1).over(w_year))
+    # Use one continuous chronological window across the complete series.\n    # Partitioning by year would reset lags at New Year's boundaries and make\n    # the first hours of each year inconsistent with a real time-series model.\n    w_time = Window.orderBy("datetime")\n\n    # Forecasting must be causal: every feature at time t uses observations\n    # strictly before t. The target is t+1.\n    w_3h_past = Window.orderBy("datetime").rowsBetween(-3, -1)\n    w_24h_past = Window.orderBy("datetime").rowsBetween(-24, -1)\n\n    # Lag features & target next-hour prediction\n    df_feat = df_feat \\\n        .withColumn("lag_1h", lag("energy_kwh", 1).over(w_time)) \\\n        .withColumn("lag_24h", lag("energy_kwh", 24).over(w_time)) \\\n        .withColumn("rolling_avg_3h", avg("energy_kwh").over(w_3h_past)) \\\n        .withColumn("rolling_avg_24h", avg("energy_kwh").over(w_24h_past)) \\\n        .withColumn("target_next_hour_kwh", lead("energy_kwh", 1).over(w_time))
 
     # Drop null rows resulting from lag/lead
     df_feat = df_feat.dropna(subset=["lag_1h", "lag_24h", "target_next_hour_kwh"])
