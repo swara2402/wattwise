@@ -67,7 +67,7 @@ const PIPELINE = [
     title: 'Monitor',
     icon: Network,
     tone: 'muted',
-    body: 'Isolation Forest scores every day in the dataset. Days isolated in fewer splits are surfaced as incidents with severity and likely cause.',
+    body: 'Isolation Forest scores every day in the dataset. Statistically unusual days are surfaced as incidents with severity and a heuristic explanation; these are not confirmed physical root causes.',
   },
 ]
 
@@ -284,7 +284,7 @@ export function ModelsPage() {
                   label: 'R² — variance explained',
                   value: metrics.R2,
                   unit: 'fraction of variance',
-                  body: 'How much better than always guessing the historical mean. 0.46 is respectable for daily household kWh, which is stubbornly noisy.',
+                  body: 'How much of the variation in the held-out test set is explained by the model. Higher values indicate a closer fit to the observed test-set variation.',
                 },
               ].map((metric) => (
                 <div key={metric.key} className="rounded-xl border border-line bg-surface-2 p-4">
@@ -338,7 +338,7 @@ export function ModelsPage() {
         <div className="space-y-4">
           <ChartFrame
             title="Feature importance"
-            subtitle="Permutation-style importance from the trained ensembles. Lags and rolling means dominate — which is exactly why the API needs your full 30-day window."
+            subtitle="Feature importance from the trained Random Forest model. Lags and rolling statistics are important because the API reconstructs the same 30-day temporal context used during training."
             icon={Boxes}
             height={320}
             isEmpty={!loading && !importance.length}
@@ -374,9 +374,7 @@ export function ModelsPage() {
           <Card className="card-pad flex items-start gap-3 bg-surface-2">
             <Info className="mt-0.5 size-4 shrink-0 text-info" strokeWidth={2.2} aria-hidden="true" />
             <p className="text-[0.8rem] leading-relaxed text-fg-muted">
-              {featureCount} features × 1,433 rows is a deliberately small tabular problem. The model is not
-              over-fitted to your household, which is why it generalises — but it also means a single very unusual
-              week will move the forecast more than a well-behaved one.
+              {featureCount} features are built from the engineered daily table. The shipped model was trained on historical household data rather than a current individual household, so its forecasts should be treated as estimates and can be sensitive to unusual recent usage.
             </p>
           </Card>
         </div>
