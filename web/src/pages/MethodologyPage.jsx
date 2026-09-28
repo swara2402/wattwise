@@ -62,7 +62,7 @@ export function MethodologyPage() {
       num: '02',
       title: 'Distributed Data Cleaning & Preprocessing',
       icon: CheckCircle2,
-      badge: 'Zero Null Values Remaining',
+      badge: 'Missing Active Power Excluded',
       tone: 'brand',
       description:
         'The main training pipeline uses bounded time-based linear interpolation for short missing runs. The separate PySpark pipeline does not interpolate active power; it excludes rows with missing active power and fills missing sub-metering values with zero.',
@@ -226,7 +226,7 @@ export function MethodologyPage() {
         <div className="mt-6 grid gap-3 sm:grid-cols-3 lg:grid-cols-5 text-center">
           {[
             { step: '1. Raw Ingestion', detail: '2.07M 1-min records' },
-            { step: '2. Cleaning & Spark', detail: '0 missing, aggregated' },
+            { step: '2. Cleaning & Spark', detail: 'Typed, filtered & aggregated' },
             { step: '3. Feature Eng.', detail: '26 temporal features' },
             { step: '4. Model Ensemble', detail: 'RF, XGBoost, IsoForest' },
             { step: '5. Web & Advisor', detail: 'FastAPI + React UI' },
