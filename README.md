@@ -20,7 +20,7 @@ Modern households lack transparent, data-driven tools to anticipate electricity 
 ### Key Challenges Addressed
 1. **High-Frequency Noisy Data**: Processing 2.07M minute-level smart meter records with missing values.
 2. **Temporal Leakage in ML**: Preventing data leakage in time-series forecasting through strict chronological splitting.
-3. **Transparent Costing**: Translating kWh forecasts into monetary currency based on custom household tariff slabs.
+3. **Transparent Costing**: Translating kWh forecasts into monetary currency based on custom household flat tariff.
 4. **Statistical Outlier Detection**: Distinguishing true statistical consumption anomalies from regular peak usage.
 
 ---
@@ -72,7 +72,7 @@ Modern households lack transparent, data-driven tools to anticipate electricity 
              ▼
 [ Machine Learning & Analytics Pipeline ]
  ├── Regressors: Naive Baseline | Random Forest V2 | XGBoost V2 | Spark MLlib RF
- ├── Anomaly Detection: Isolation Forest (Contamination = 5%)
+ ├── Anomaly Detection: Isolation Forest (Contamination = 2%)
  └── Clustering: K-Means (2 Household Usage Modes)
              │
              ▼
@@ -91,18 +91,18 @@ Modern households lack transparent, data-driven tools to anticipate electricity 
 
 The dataset processing pipeline transforms raw high-frequency observations into structured training artifacts:
 
-$$\text{Raw Dataset (2,075,259 rows)} \xrightarrow{\text{Interpolation}} \text{Cleaned (2,049,280 rows)} \xrightarrow{\text{Aggregation}} \text{Daily Series (1,442 rows)} \xrightarrow{\text{Lag Drop}} \text{ML Table (1,433 rows)}$$
+$\text{Raw Dataset (2,075,259 rows)} \xrightarrow{\text{Time interpolation}} \text{Cleaned minute readings} \xrightarrow{\text{Daily aggregation}} \text{Daily Series (1,433 rows)} \xrightarrow{\text{30-day feature warmup}} \text{ML Table (1,403 rows)}$
 
 ### Pipeline Record Tracking
 | Stage | Description | Record Count | Missing Values / Loss |
 | :--- | :--- | :---: | :---: |
 | **Raw Ingestion** | 1-minute smart meter readings (2006–2010) | 2,075,259 | 25,979 (1.25% missing `?`) |
-| **Data Cleaning** | Time-based linear interpolation (limit=60m) | 2,049,280 | 0 missing remaining |
-| **Daily Aggregation** | Sum of minute kW / 60 $\rightarrow$ Daily kWh | 1,442 | 0 missing |
-| **Feature Engineering** | 26 lag/rolling features (30-day context window) | 1,433 | 9 initial lag warmup rows dropped |
-| **Train Split (70%)** | Chronological training set | 1,003 | 0 rows |
-| **Validation Split (15%)**| Chronological hyperparameter tuning set | 215 | 0 rows |
-| **Held-Out Test Split (15%)**| Out-of-sample test evaluation set | 215 | 0 rows |
+| **Data Cleaning** | Time-based linear interpolation (limit=60m) | 2,049,280 valid minute readings | Missing numeric entries resolved within the interpolation limit |
+| **Daily Aggregation** | Sum of minute kW / 60 $\rightarrow$ Daily kWh | 1,433 | 0 missing |
+| **Feature Engineering** | 26 lag/rolling features (30-day context window) | 1,403 | 30 initial lag warmup rows dropped |
+| **Train Split (70%)** | Chronological training set | 982 | 0 rows |
+| **Validation Split (15%)**| Chronological validation set | 210 | 0 rows |
+| **Held-Out Test Split (15%)**| Out-of-sample test evaluation set | 211 | 0 rows |
 
 ---
 
@@ -154,7 +154,7 @@ Rigorous statistical metrics computed across the processed 1,442-day consumption
 
 ## 9. Machine Learning Pipeline & Evaluation
 
-Models are trained on 70% of chronological data and evaluated on the final 15% held-out test split (215 unseen days).
+Models are trained on 70% of chronological data, validated on the next 15%, and evaluated on the final 15% held-out test split (211 unseen engineered days).
 
 ### Model Performance Comparison Table
 | Model | Type | MAE (kWh/day) | RMSE (kWh/day) | $R^2$ Score | Training Time | Deployed Role |
@@ -191,7 +191,7 @@ For multi-day forecasts (up to 30 days ahead):
 
 ## 11. Anomaly & Excess Detection
 
-* **Algorithm**: Isolation Forest (`contamination = 0.05`, `n_estimators = 100`)
+* **Algorithm**: Isolation Forest (`contamination = 0.02`, `n_estimators = 300`)
 * **Scoring Mechanism**: Measures tree partition depth required to isolate each day.
 * **Severity Grading**:
   * **Critical**: Anomaly score $< -0.15$ AND $> 50\%$ deviation over 7-day baseline.
@@ -297,8 +297,8 @@ python -m pytest
 
 ## 17. Results & Key Findings
 
-1. **Random Forest Superiority**: Random Forest V2 outperformed Naive Baseline by reducing MAE from $4.755\text{ kWh}$ to $4.003\text{ kWh}$ ($15.8\%$ error reduction) and explaining $45.8\%$ of daily consumption variance.
-2. **Weekend Consumption Spike**: Households exhibit a $1.12\times$ higher average daily energy consumption on weekends due to increased occupancy and laundry/kitchen appliance usage.
+1. **Random Forest benchmark**: Random Forest V2 outperformed Naive Baseline by reducing MAE from $4.755\text{ kWh}$ to $4.003\text{ kWh}$ ($15.8\%$ error reduction) and explaining $45.8\%$ of daily consumption variance.
+2. **Weekend consumption pattern**: The historical dataset shows a $1.12\times$ weekend-to-weekday mean ratio. This is a descriptive pattern in the benchmark data, not proof of the underlying cause.
 3. **Primary Energy Driver**: Exponential moving average (`ewm_7`) and short-term rolling averages (`rolling_mean_3`, `rolling_mean_7`) account for over $31.4\%$ of total feature importance, proving that recent consumption inertia strongly predicts near-term demand.
 
 ---
