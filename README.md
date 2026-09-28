@@ -126,7 +126,7 @@ $\text{Raw Dataset (2,075,259 rows)} \xrightarrow{\text{Time interpolation}} \te
 
 ## 8. Statistical Analysis
 
-Rigorous statistical metrics computed across the processed 1,442-day consumption series:
+Rigorous statistical metrics computed across the processed daily consumption series:
 
 ### Summary Statistics
 * **Mean Consumption**: $26.03\text{ kWh/day}$
