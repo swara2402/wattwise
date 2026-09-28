@@ -333,9 +333,7 @@ def train_and_evaluate_mllib(df_feat):
     train_df = df_ml.filter(col("datetime") < "2010-01-01")
     test_df = df_ml.filter(col("datetime") >= "2010-01-01")
 
-    # Fallback to 80/20 randomSplit if date range is narrow
-    if train_df.count() == 0 or test_df.count() == 0:
-        train_df, test_df = df_ml.randomSplit([0.8, 0.2], seed=42)
+    # Fallback to an 80/20 chronological split if the fixed calendar cutoff\n    # does not intersect the available data. Never use randomSplit for this\n    # time-series task because it can place future observations in training.\n    if train_df.count() == 0 or test_df.count() == 0:\n        ordered = df_ml.orderBy("datetime")\n        total = ordered.count()\n        split_index = max(1, min(total - 1, int(total * 0.8)))\n        train_df = ordered.limit(split_index)\n        test_df = ordered.subtract(train_df)
 
     train_count = train_df.count()
     test_count = test_df.count()
