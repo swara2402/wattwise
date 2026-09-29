@@ -24,7 +24,7 @@ echo "🌐 Starting frontend server..."
 cd web
 if [ ! -f ".env.local" ]; then
   echo "📝 Creating environment file..."
-  echo "VITE_API_URL=http://127.0.0.1:8000" > .env.local
+  echo "VITE_API_URL=http://localhost:8000" > .env.local
 fi
 
 # Install dependencies if node_modules doesn't exist
@@ -40,7 +40,7 @@ echo ""
 echo "✅ WattWise is now running!"
 echo ""
 echo "📱 Frontend: http://localhost:5173"
-echo "🔌 Backend:  http://127.0.0.1:8000"
+echo "🔌 Backend:  http://localhost:8000"
 echo ""
 echo "Press Ctrl+C to stop everything"
 
