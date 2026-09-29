@@ -68,9 +68,6 @@ except ImportError:
 # APP
 # =========================================================
 
-app.include_router(auth_router)
-
-
 app = FastAPI(
     title="WattWise AI API",
     description="ML-powered household electricity prediction API",
@@ -129,6 +126,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
 
 
 # =========================================================

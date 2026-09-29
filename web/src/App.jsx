@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState, useCallback } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppShell } from './components/layout/AppShell'
@@ -65,24 +65,26 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<AuthPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard" element={<LazyPage><DashboardPage /></LazyPage>} />
-            <Route path="/analytics" element={<LazyPage><AnalyticsPage /></LazyPage>} />
-            <Route path="/anomalies-excess" element={<LazyPage><WastePage /></LazyPage>} />
-            <Route path="/simulator" element={<LazyPage><SimulatorPage /></LazyPage>} />
-            <Route path="/predictor" element={<LazyPage><PredictorPage /></LazyPage>} />
-            <Route path="/advisor" element={<LazyPage><AdvisorPage /></LazyPage>} />
-            <Route path="/models" element={<LazyPage><ModelsPage /></LazyPage>} />
-            <Route path="/methodology" element={<LazyPage><MethodologyPage /></LazyPage>} />
-            <Route path="/settings" element={<LazyPage><SettingsPage /></LazyPage>} />
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<LazyPage><NotFoundPage /></LazyPage>} />
-          </Route>
-        </Routes>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<AuthPage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/dashboard" element={<LazyPage><DashboardPage /></LazyPage>} />
+              <Route path="/analytics" element={<LazyPage><AnalyticsPage /></LazyPage>} />
+              <Route path="/anomalies-excess" element={<LazyPage><WastePage /></LazyPage>} />
+              <Route path="/simulator" element={<LazyPage><SimulatorPage /></LazyPage>} />
+              <Route path="/predictor" element={<LazyPage><PredictorPage /></LazyPage>} />
+              <Route path="/advisor" element={<LazyPage><AdvisorPage /></LazyPage>} />
+              <Route path="/models" element={<LazyPage><ModelsPage /></LazyPage>} />
+              <Route path="/methodology" element={<LazyPage><MethodologyPage /></LazyPage>} />
+              <Route path="/settings" element={<LazyPage><SettingsPage /></LazyPage>} />
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<LazyPage><NotFoundPage /></LazyPage>} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
       </AppProvider>
     </ErrorBoundary>
   )
