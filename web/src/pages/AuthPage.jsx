@@ -51,13 +51,13 @@ export function AuthPage() {
         householdName: result.household?.name || 'My Home',
       })
 
-      // Check if user has completed onboarding
-      const state = await api.auth.getState()
       window.dispatchEvent(new Event('wattwise-auth-changed'))
       
-      if (!state.initialized) {
+      // ONLY send newly registered users to onboarding - not existing users who sign in
+      if (!isLogin) { // This is a new registration, not a login
         navigate('/onboarding', { replace: true })
       } else {
+        // For existing users signing in, go straight to dashboard
         navigate('/dashboard', { replace: true })
       }
     } catch (err) {

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -22,48 +22,40 @@ const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ de
 
 function ProtectedRoute() {
   const location = useLocation()
-  const [state, setState] = useState({ loading: true, authenticated: false, initialized: true })
+  const [state, setState] = useState({ loading: true, authenticated: false })
 
-  useEffect(() => {
+  const checkAuthentication = useCallback(() => {
+    console.log('ProtectedRoute: Fetching auth state for path:', location.pathname)
     let active = true
     api.auth.me()
       .then(() => {
-        // Check if user has completed onboarding
-        return api.auth.getState().then((stateData) => {
-          if (active) {
-            setState({ 
-              loading: false, 
-              authenticated: true, 
-              initialized: stateData.initialized 
-            })
-          }
-        })
+        if (active) {
+          setState({ 
+            loading: false, 
+            authenticated: true
+          })
+        }
       })
-      .catch(() => active && setState({ loading: false, authenticated: false, initialized: false }))
+      .catch(() => {
+        console.log('ProtectedRoute: Failed to fetch auth state')
+        active && setState({ loading: false, authenticated: false })
+      })
     return () => { active = false }
   }, [])
+
+  useEffect(() => {
+    checkAuthentication()
+  }, [checkAuthentication])
+  
+  console.log('ProtectedRoute: Current state - loading:', state.loading, 'authenticated:', state.authenticated, 'path:', location.pathname)
 
   if (state.loading) {
     return <div className="grid min-h-dvh place-items-center bg-bg"><LoadingBlock label="Opening your home…" /></div>
   }
 
   if (!state.authenticated) {
+    console.log('ProtectedRoute: Not authenticated, redirecting to login')
     return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
-  }
-
-  // If user hasn't completed onboarding, redirect to /onboarding
-  if (!state.initialized && location.pathname !== '/onboarding') {
-    return <Navigate to="/onboarding" replace />
-  }
-
-  // If user has completed onboarding and is trying to access /onboarding, redirect to dashboard
-  if (state.initialized && location.pathname === '/onboarding') {
-    return <Navigate to="/dashboard" replace />
-  }
-
-  // Only show AppShell for routes that need it (not onboarding)
-  if (location.pathname === '/onboarding') {
-    return <OnboardingPage />
   }
 
   return <AppShell />
@@ -76,8 +68,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<AuthPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
           <Route element={<ProtectedRoute />}>
-            <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/dashboard" element={<LazyPage><DashboardPage /></LazyPage>} />
             <Route path="/analytics" element={<LazyPage><AnalyticsPage /></LazyPage>} />
             <Route path="/anomalies-excess" element={<LazyPage><WastePage /></LazyPage>} />
