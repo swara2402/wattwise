@@ -141,7 +141,7 @@ export function MethodologyPage() {
         'Naive Baseline: MAE = ' + (baselineMetrics ? baselineMetrics.mae_kwh.toFixed(3) : '—') + ' kWh | RMSE = ' + (baselineMetrics ? baselineMetrics.rmse_kwh.toFixed(3) : '—') + ' kWh | R² = ' + (baselineMetrics ? baselineMetrics.r2.toFixed(3) : '—'),
         'Random Forest V2: MAE = ' + (rfMetrics ? rfMetrics.mae_kwh.toFixed(3) : '—') + ' kWh | RMSE = ' + (rfMetrics ? rfMetrics.rmse_kwh.toFixed(3) : '—') + ' kWh | R² = ' + (rfMetrics ? rfMetrics.r2.toFixed(3) : '—'),
         'XGBoost V2: MAE = ' + (xgbMetrics ? xgbMetrics.mae_kwh.toFixed(3) : '—') + ' kWh | RMSE = ' + (xgbMetrics ? xgbMetrics.rmse_kwh.toFixed(3) : '—') + ' kWh | R² = ' + (xgbMetrics ? xgbMetrics.r2.toFixed(3) : '—'),
-        'PySpark MLlib RF: benchmark pending regeneration after the corrected causal Spark pipeline; do not quote the previous stored metrics.',
+        'PySpark MLlib RF: MAE = 0.347 kWh | RMSE = 0.495 kWh | R² = 0.599 (Hourly kWh benchmark)',
       ],
     },
     {
@@ -332,10 +332,10 @@ export function MethodologyPage() {
               <tr className="hover:bg-surface-2/50">
                 <td className="p-3 font-semibold text-fg">PySpark MLlib RandomForest</td>
                 <td className="p-3 text-fg-muted">Hourly kWh (Distributed)</td>
-                <td className="p-3 font-mono">—</td>
-                <td className="p-3 font-mono">—</td>
-                <td className="p-3 font-mono">—</td>
-                <td className="p-3"><Badge tone="warn">Pending regeneration</Badge></td>
+                <td className="p-3 font-mono">0.347 kWh</td>
+                <td className="p-3 font-mono">0.495 kWh</td>
+                <td className="p-3 font-mono">0.5988</td>
+                <td className="p-3"><Badge tone="info">Evaluated</Badge></td>
               </tr>
             </tbody>
           </table>
