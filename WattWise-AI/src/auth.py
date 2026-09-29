@@ -15,7 +15,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -117,9 +117,23 @@ def _new_session(db: sqlite3.Connection, user_id: str) -> str:
 
 def _token_from_request(request: Request) -> str:
     header = request.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to continue.")
-    return header[7:].strip()
+    if header.startswith("Bearer "):
+        return header[7:].strip()
+    cookie = request.cookies.get("wattwise_session", "")
+    if cookie:
+        return cookie
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to continue.")
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        "wattwise_session",
+        token,
+        httponly=True,
+        secure=os.getenv("WATTWISE_COOKIE_SECURE", "0") == "1",
+        samesite=os.getenv("WATTWISE_COOKIE_SAMESITE", "lax"),
+        max_age=SESSION_DAYS * 86400,
+        path="/",
+    )
 
 
 def current_user(request: Request) -> dict:
@@ -143,7 +157,7 @@ def current_user(request: Request) -> dict:
 
 
 @router.post("/register")
-def register(payload: RegisterRequest) -> dict:
+def register(payload: RegisterRequest, response: Response) -> dict:
     email = str(payload.email).strip().lower()
     salt = secrets.token_bytes(16)
     password_hash = _hash_password(payload.password, salt)
@@ -167,11 +181,12 @@ def register(payload: RegisterRequest) -> dict:
 
         token = _new_session(db, user_id)
 
-    return {"token": token, "user": {"id": user_id, "email": email, "name": payload.name.strip()}, "household": {"id": household_id, "name": "My Home"}}
+    _set_session_cookie(response, token)
+    return {"user": {"id": user_id, "email": email, "name": payload.name.strip()}, "household": {"id": household_id, "name": "My Home"}}
 
 
 @router.post("/login")
-def login(payload: LoginRequest) -> dict:
+def login(payload: LoginRequest, response: Response) -> dict:
     email = str(payload.email).strip().lower()
     with _connect() as db:
         row = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
@@ -183,14 +198,16 @@ def login(payload: LoginRequest) -> dict:
         token = _new_session(db, row["id"])
         household = db.execute("SELECT id,name FROM households WHERE user_id=?", (row["id"],)).fetchone()
 
-    return {"token": token, "user": {"id": row["id"], "email": row["email"], "name": row["name"]}, "household": dict(household)}
+    _set_session_cookie(response, token)
+    return {"user": {"id": row["id"], "email": row["email"], "name": row["name"]}, "household": dict(household)}
 
 
 @router.post("/logout")
-def logout(request: Request) -> dict:
+def logout(request: Request, response: Response) -> dict:
     raw = _token_from_request(request)
     with _connect() as db:
         db.execute("DELETE FROM sessions WHERE token_hash=?", (hashlib.sha256(raw.encode()).hexdigest(),))
+    response.delete_cookie("wattwise_session", path="/")
     return {"ok": True}
 
 
