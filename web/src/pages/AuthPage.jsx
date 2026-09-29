@@ -1,294 +1,157 @@
-import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Lock, Mail, User, Zap } from 'lucide-react'
 import { Button } from '../components/ui/Button'
-import { Card } from '../components/ui/Card'
 import { Field } from '../components/ui/Field'
-import { useApp } from '../context/AppContext'
+
+const USER_KEY = 'wattwise.localUser'
+const AUTH_KEY = 'wattwise.isAuthenticated'
+
+async function hashPassword(password, salt) {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: encoder.encode(salt), iterations: 120000, hash: 'SHA-256' },
+    key,
+    256,
+  )
+  return Array.from(new Uint8Array(bits), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function randomSalt() {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 export function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true)
-  const [email, setEmail] = useState('')
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const [isLogin, setIsLogin] = useState(params.get('mode') !== 'signup')
+  const [email, setEmail] = useState(() => localStorage.getItem('wattwise.rememberEmail') || '')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
-  const [showForgotPassword, setShowForgotPassword] = useState(false)
-  const [resetEmailSent, setResetEmailSent] = useState(false)
-  const navigate = useNavigate()
-  const { updateSettings } = useApp()
 
-  // Password strength calculation
+  useEffect(() => {
+    setIsLogin(params.get('mode') !== 'signup')
+  }, [params])
+
   const passwordStrength = useMemo(() => {
-    if (!password) return { score: 0, label: '', color: '' }
     let score = 0
-    if (password.length >= 8) score++
-    if (/[A-Z]/.test(password)) score++
-    if (/[0-9]/.test(password)) score++
-    if (/[^A-Za-z0-9]/.test(password)) score++
-    
-    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong']
-    const colors = ['', 'bg-danger', 'bg-warn', 'bg-brand', 'bg-green-500']
-    return { score, label: labels[score], color: colors[score] }
+    if (password.length >= 8) score += 1
+    if (/[A-Z]/.test(password)) score += 1
+    if (/[0-9]/.test(password)) score += 1
+    if (/[^A-Za-z0-9]/.test(password)) score += 1
+    return score
   }, [password])
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const switchMode = () => {
+    setIsLogin((value) => !value)
+    setError('')
+    setPassword('')
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
     setError('')
     setIsLoading(true)
 
-    // Simple auth simulation - in production this would call an API
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Store user info
-      updateSettings({ userName: name || email.split('@')[0] })
-      if (rememberMe) {
-        localStorage.setItem('wattwise.rememberEmail', email)
+      const normalizedEmail = email.trim().toLowerCase()
+      if (!normalizedEmail) throw new Error('Enter your email address.')
+      if (password.length < 8) throw new Error('Use at least 8 characters for your password.')
+
+      const existing = JSON.parse(localStorage.getItem(USER_KEY) || 'null')
+
+      if (isLogin) {
+        if (!existing || existing.email !== normalizedEmail) {
+          throw new Error('We could not find that account on this device. Create your account first.')
+        }
+        const hash = await hashPassword(password, existing.salt)
+        if (hash !== existing.passwordHash) throw new Error('That password does not match. Try again.')
+        localStorage.setItem(AUTH_KEY, 'true')
+        if (rememberMe) localStorage.setItem('wattwise.rememberEmail', normalizedEmail)
+        navigate('/dashboard', { replace: true })
+        return
       }
-      localStorage.setItem('wattwise.isAuthenticated', 'true')
-      
-      navigate('/dashboard')
+
+      if (!name.trim()) throw new Error('Tell us your name so WattWise knows who it is helping.')
+      if (existing?.email === normalizedEmail) throw new Error('An account with this email already exists on this device.')
+
+      const salt = randomSalt()
+      const passwordHash = await hashPassword(password, salt)
+      localStorage.setItem(USER_KEY, JSON.stringify({
+        name: name.trim(),
+        email: normalizedEmail,
+        salt,
+        passwordHash,
+        createdAt: new Date().toISOString(),
+      }))
+      localStorage.setItem(AUTH_KEY, 'true')
+      localStorage.setItem('wattwise.rememberEmail', normalizedEmail)
+      navigate('/dashboard', { replace: true })
     } catch (err) {
-      setError('Authentication failed. Please try again.')
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const handleForgotPassword = async (e) => {
-    e.preventDefault()
-    if (!email) {
-      setError('Please enter your email address to reset your password')
-      return
-    }
-    setIsLoading(true)
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setResetEmailSent(true)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  if (showForgotPassword) {
-    return (
-      <div className="min-h-screen grid-bg flex items-center justify-center p-4 bg-bg">
-        <div className="w-full max-w-md">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-brand-soft text-brand mb-4">
-              <svg className="size-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-fg">Reset Password</h1>
-            <p className="text-fg-muted mt-2">We'll send you a reset link</p>
-          </div>
-
-          <Card className="card-pad">
-            {resetEmailSent ? (
-              <div className="text-center py-8">
-                <div className="inline-flex items-center justify-center size-16 rounded-full bg-green-100 text-green-600 mb-4">
-                  <svg className="size-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold text-fg mb-2">Check your email</h3>
-                <p className="text-fg-muted mb-6">We've sent a password reset link to {email}</p>
-                <Button 
-                  variant="primary" 
-                  onClick={() => { setShowForgotPassword(false); setResetEmailSent(false); }}
-                >
-                  Back to Sign in
-                </Button>
-              </div>
-            ) : (
-              <form onSubmit={handleForgotPassword} className="space-y-5">
-                {error && (
-                  <div className="p-3 rounded-lg bg-danger-soft text-danger text-sm">{error}</div>
-                )}
-                <Field label="Email address">
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-fg-muted" />
-                    <input
-                      type="email"
-                      className="input pl-10"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                </Field>
-                <Button type="submit" variant="primary" className="btn-block" disabled={isLoading}>
-                  {isLoading ? 'Sending...' : 'Send reset link'}
-                </Button>
-                <button
-                  type="button"
-                  onClick={() => setShowForgotPassword(false)}
-                  className="w-full text-center text-sm text-brand hover:underline"
-                >
-                  Back to sign in
-                </button>
-              </form>
-            )}
-          </Card>
-        </div>
-      </div>
-    )
   }
 
   return (
-    <div className="min-h-screen grid-bg flex items-center justify-center p-4 bg-bg">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-brand-soft text-brand mb-4">
-            <svg className="size-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+    <main className="relative min-h-dvh overflow-hidden bg-bg text-fg">
+      <div className="absolute inset-0 grid-bg opacity-60" aria-hidden="true" />
+      <div className="absolute -right-40 -top-40 size-[34rem] rounded-full bg-brand/10 blur-3xl" aria-hidden="true" />
+      <div className="absolute -bottom-48 -left-40 size-[34rem] rounded-full bg-accent/10 blur-3xl" aria-hidden="true" />
+
+      <div className="relative mx-auto grid min-h-dvh max-w-6xl items-center gap-10 px-5 py-8 sm:px-8 lg:grid-cols-[1fr_440px] lg:px-10">
+        <section className="hidden lg:block">
+          <Link to="/" className="inline-flex items-center gap-2 font-extrabold tracking-tight"><span className="grid size-9 place-items-center rounded-xl bg-fg text-bg"><Zap className="size-4" fill="currentColor" /></span>WattWise</Link>
+          <div className="mt-16 max-w-xl animate-fade-up">
+            <p className="text-xs font-black uppercase tracking-[.18em] text-brand">A calmer way to understand your home</p>
+            <h1 className="mt-4 text-6xl font-black leading-[.98] tracking-[-.055em]">Know your energy.<br /><span className="text-gradient">Not just your bill.</span></h1>
+            <p className="mt-6 max-w-lg text-lg leading-8 text-fg-muted">WattWise turns the messy bits of electricity data into simple answers you can actually use.</p>
+            <div className="mt-8 space-y-3">
+              {['See what is driving your usage', 'Estimate what your next bill could look like', 'Try savings ideas before changing anything'].map((item) => (
+                <div key={item} className="flex items-center gap-3 text-sm font-semibold text-fg-muted"><span className="grid size-7 place-items-center rounded-full bg-accent-soft text-accent"><Check className="size-3.5" /></span>{item}</div>
+              ))}
+            </div>
           </div>
-          <h1 className="text-3xl font-bold text-fg">WattWise</h1>
-          <p className="text-fg-muted mt-2">Smart energy management for your home</p>
-        </div>
+        </section>
 
-        <Card className="card-pad">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <h2 className="text-xl font-semibold text-fg">
-              {isLogin ? 'Welcome back' : 'Create your account'}
-            </h2>
+        <section className="animate-fade-up">
+          <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-fg-muted hover:text-fg lg:hidden"><ArrowLeft className="size-4" /> Back to WattWise</Link>
+          <div className="rounded-[2rem] border border-line bg-surface/90 p-6 shadow-2xl shadow-slate-900/10 backdrop-blur-xl sm:p-8">
+            <div className="mb-7 lg:hidden"><span className="grid size-11 place-items-center rounded-2xl bg-fg text-bg"><Zap className="size-5" fill="currentColor" /></span><h1 className="mt-4 text-2xl font-black">WattWise</h1></div>
+            <div className="mb-7">
+              <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[.14em] text-brand">{isLogin ? 'Welcome back' : 'Your home starts here'}</p><h2 className="mt-1 text-3xl font-black tracking-tight">{isLogin ? 'Sign in' : 'Create your account'}</h2></div><span className="grid size-11 place-items-center rounded-2xl bg-brand-soft text-brand"><Lock className="size-5" /></span></div>
+              <p className="mt-2 text-sm leading-6 text-fg-muted">{isLogin ? 'Pick up where you left off.' : 'A minute now, clearer energy decisions later.'}</p>
+            </div>
 
-            {error && (
-              <div className="p-3 rounded-lg bg-danger-soft text-danger text-sm">
-                {error}
-              </div>
-            )}
+            {error && <div role="alert" className="mb-5 rounded-2xl border border-danger/20 bg-danger-soft p-3 text-sm font-medium text-danger animate-fade-up">{error}</div>}
 
-            {!isLogin && (
-              <Field label="Full name">
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-fg-muted" />
-                  <input
-                    type="text"
-                    className="input pl-10"
-                    placeholder="John Doe"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
-              </Field>
-            )}
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {!isLogin && <Field label="Your name"><div className="relative"><User className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle" /><input className="input pl-10" value={name} onChange={(e) => setName(e.target.value)} placeholder="Swarali" autoComplete="name" required /></div></Field>}
+              <Field label="Email"><div className="relative"><Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle" /><input className="input pl-10" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required /></div></Field>
+              <Field label="Password"><div className="relative"><Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle" /><input className="input pl-10 pr-11" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" autoComplete={isLogin ? 'current-password' : 'new-password'} minLength={8} required /><button type="button" className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-fg-subtle hover:bg-surface-3 hover:text-fg" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div>{!isLogin && password && <div className="mt-2 flex gap-1">{[1,2,3,4].map((i) => <span key={i} className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${i <= passwordStrength ? 'bg-accent' : 'bg-surface-3'}`} />)}</div>}</Field>
 
-            <Field label="Email address">
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-fg-muted" />
-                <input
-                  type="email"
-                  className="input pl-10"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </Field>
+              {isLogin && <label className="flex items-center gap-2 text-sm text-fg-muted"><input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="size-4 rounded border-line accent-brand" /> Remember this device</label>}
 
-            <Field label="Password">
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-fg-muted" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  className="input pl-10 pr-10"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg"
-                >
-                  {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
-                </button>
-              </div>
-              {!isLogin && password && (
-                <div className="mt-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-fg-muted">Password strength</span>
-                    <span className={`text-xs font-semibold ${passwordStrength.score > 2 ? 'text-green-600' : passwordStrength.score > 1 ? 'text-warn' : 'text-danger'}`}>
-                      {passwordStrength.label}
-                    </span>
-                  </div>
-                  <div className="flex gap-1">
-                    {[1,2,3,4].map((i) => (
-                      <div key={i} className={`h-1 flex-1 rounded-full ${i <= passwordStrength.score ? passwordStrength.color : 'bg-surface-3'}`} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </Field>
+              <Button type="submit" variant="primary" size="lg" className="btn-block rounded-xl" disabled={isLoading}>
+                {isLoading ? 'Opening WattWise…' : isLogin ? <>Open my WattWise <ArrowRight className="size-4" /></> : <>Build my home <ArrowRight className="size-4" /></>}
+              </Button>
+            </form>
 
-            {isLogin && (
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="size-4 rounded border-border text-brand focus:ring-brand"
-                  />
-                  <span className="text-sm text-fg-muted">Remember me</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowForgotPassword(true)}
-                  className="text-sm text-brand hover:underline"
-                >
-                  Forgot password?
-                </button>
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              variant="primary"
-              className="btn-block"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="size-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Processing...
-                </span>
-              ) : isLogin ? 'Sign in' : 'Create account'}
-            </Button>
-          </form>
-
-          <div className="mt-6 pt-6 border-t border-line">
-            <p className="text-center text-fg-muted text-sm">
-              {isLogin ? "Don't have an account?" : "Already have an account?"}{' '}
-              <button
-                type="button"
-                onClick={() => { setIsLogin(!isLogin); setError('') }}
-                className="text-brand font-semibold hover:underline"
-              >
-                {isLogin ? 'Sign up' : 'Sign in'}
-              </button>
-            </p>
+            <div className="mt-6 border-t border-line pt-6 text-center">
+              <p className="text-sm text-fg-muted">{isLogin ? "New to WattWise?" : 'Already set up?'}{' '}<button type="button" onClick={switchMode} className="font-bold text-brand hover:underline">{isLogin ? 'Create an account' : 'Sign in'}</button></p>
+            </div>
           </div>
-        </Card>
-
-        <p className="text-center text-fg-subtle text-xs mt-6">
-          By continuing, you agree to WattWise's Terms of Service and Privacy Policy.
-        </p>
+          <p className="mt-4 text-center text-[11px] leading-5 text-fg-subtle">For now, your account profile is stored locally on this device. WattWise never needs your electricity password or bank details.</p>
+        </section>
       </div>
-    </div>
+    </main>
   )
 }
