@@ -4,6 +4,7 @@ import { Sidebar, MobileNav } from './Sidebar'
 import { Topbar, OfflineBanner } from './Topbar'
 import { CommandPalette } from '../CommandPalette'
 import { ToastViewport } from '../ToastViewport'
+import '../../app-motion.css'
 
 export function AppShell() {
   const [navOpen, setNavOpen] = useState(false)
