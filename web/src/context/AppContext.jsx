@@ -196,8 +196,10 @@ export function AppProvider({ children }) {
     api.auth.getState()
       .then((state) => {
         if (!active) return
-        if (Array.isArray(state?.appliances) && state.appliances.length) setAppliances(reviveAppliances(state.appliances))
-        if (Array.isArray(state?.scenarios)) setScenarios(reviveScenarios(state.scenarios))
+        if (state?.initialized) {
+          if (Array.isArray(state.appliances)) setAppliances(reviveAppliances(state.appliances))
+          if (Array.isArray(state.scenarios)) setScenarios(reviveScenarios(state.scenarios))
+        }
         householdStateHydrated.current = true
       })
       .catch(() => {
