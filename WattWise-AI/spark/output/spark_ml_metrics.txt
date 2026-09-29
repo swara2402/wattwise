@@ -1,0 +1,4 @@
+Spark MLlib RandomForest Metrics:
+RMSE: 0.4949 kWh
+MAE:  0.3465 kWh
+R2:   0.6001
