@@ -12,6 +12,7 @@ import hmac
 import os
 import secrets
 import sqlite3
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -65,6 +66,12 @@ def init_db() -> None:
                 expires_at TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS household_state (
+                user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                appliances_json TEXT NOT NULL DEFAULT '[]',
+                scenarios_json TEXT NOT NULL DEFAULT '[]',
+                updated_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
             """
         )
@@ -82,6 +89,11 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
+
+
+class HouseholdState(BaseModel):
+    appliances: list[dict] = Field(default_factory=list)
+    scenarios: list[dict] = Field(default_factory=list)
 
 
 class HouseholdPatch(BaseModel):
@@ -176,6 +188,10 @@ def register(payload: RegisterRequest, response: Response) -> dict:
                    VALUES(?,?,?,?)""",
                 (household_id, user_id, "My Home", now),
             )
+            db.execute(
+                "INSERT INTO household_state(user_id,updated_at) VALUES(?,?)",
+                (user_id, now),
+            )
         except sqlite3.IntegrityError:
             raise HTTPException(status_code=409, detail="An account with that email already exists.")
 
@@ -234,3 +250,34 @@ def update_household(payload: HouseholdPatch, user: dict = Depends(current_user)
             values,
         )
     return me(user)
+
+
+@router.get("/state")
+def get_state(user: dict = Depends(current_user)) -> dict:
+    with _connect() as db:
+        row = db.execute(
+            "SELECT appliances_json,scenarios_json FROM household_state WHERE user_id=?",
+            (user["id"],),
+        ).fetchone()
+    if not row:
+        return {"appliances": [], "scenarios": []}
+    return {
+        "appliances": json.loads(row["appliances_json"]),
+        "scenarios": json.loads(row["scenarios_json"]),
+    }
+
+
+@router.put("/state")
+def save_state(payload: HouseholdState, user: dict = Depends(current_user)) -> dict:
+    now = _now().isoformat()
+    with _connect() as db:
+        db.execute(
+            """INSERT INTO household_state(user_id,appliances_json,scenarios_json,updated_at)
+               VALUES(?,?,?,?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 appliances_json=excluded.appliances_json,
+                 scenarios_json=excluded.scenarios_json,
+                 updated_at=excluded.updated_at""",
+            (user["id"], json.dumps(payload.appliances), json.dumps(payload.scenarios), now),
+        )
+    return {"ok": True, "updated_at": now}
