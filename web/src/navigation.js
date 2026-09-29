@@ -1,6 +1,4 @@
 import {
-  BookOpen,
-  Bot,
   ChartNoAxesCombined,
   Gauge,
   Home,
@@ -10,7 +8,6 @@ import {
   Sparkles,
   TriangleAlert,
   Wallet,
-  Workflow,
 } from 'lucide-react'
 
 export const NAV_SECTIONS = [
@@ -19,18 +16,11 @@ export const NAV_SECTIONS = [
     label: 'Home',
     items: [
       {
-        to: '/',
-        label: 'Welcome',
-        icon: Home,
-        description: 'Get started with your energy dashboard',
-        keywords: 'landing overview start intro',
-      },
-      {
         to: '/dashboard',
         label: 'My Dashboard',
         icon: Gauge,
         description: 'See your energy use, costs and important alerts',
-        keywords: 'usage cost bill trend summary',
+        keywords: 'usage cost bill trend summary home',
       },
     ],
   },
@@ -96,44 +86,12 @@ export const NAV_SECTIONS = [
   },
 ]
 
-export const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap((section) =>
-  section.items.map((item) => ({ ...item, section: section.label })),
-)
+export const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items.map((item) => ({ ...item, section: section.label })))
 
 export const COMMAND_ACTIONS = [
-  {
-    id: 'run-prediction',
-    label: 'Calculate future bills',
-    to: '/predictor',
-    icon: Wallet,
-    keywords: 'bill calculate estimate',
-  },
-  {
-    id: 'open-simulator',
-    label: 'See how to save money',
-    to: '/simulator',
-    icon: SlidersHorizontal,
-    keywords: 'savings calculator save',
-  },
-  {
-    id: 'review-anomalies',
-    label: 'Check unusual usage',
-    to: '/anomalies-excess',
-    icon: TriangleAlert,
-    keywords: 'spikes unusual waste',
-  },
-  {
-    id: 'advisor-actions',
-    label: 'Get energy saving tips',
-    to: '/advisor',
-    icon: Sparkles,
-    keywords: 'tips recommendations save',
-  },
-  {
-    id: 'export-report',
-    label: 'Download your energy data',
-    to: '/analytics',
-    icon: ChartNoAxesCombined,
-    keywords: 'download export data report',
-  },
+  { id: 'run-prediction', label: 'Calculate future bills', to: '/predictor', icon: Wallet, keywords: 'bill calculate estimate' },
+  { id: 'open-simulator', label: 'See how to save money', to: '/simulator', icon: SlidersHorizontal, keywords: 'savings calculator save' },
+  { id: 'review-anomalies', label: 'Check unusual usage', to: '/anomalies-excess', icon: TriangleAlert, keywords: 'spikes unusual waste' },
+  { id: 'advisor-actions', label: 'Get energy saving tips', to: '/advisor', icon: Sparkles, keywords: 'tips recommendations save' },
+  { id: 'export-report', label: 'Download your energy data', to: '/analytics', icon: ChartNoAxesCombined, keywords: 'download export data report' },
 ]
