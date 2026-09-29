@@ -1,16 +1,22 @@
-import { Link, useLocation } from 'react-router-dom'
-import { Bolt, Menu, Moon, RefreshCw, Search, Sun } from 'lucide-react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Bolt, Menu, LogOut, RefreshCw, Search } from 'lucide-react'
 import { ALL_NAV_ITEMS } from '../../navigation'
 import { useApp } from '../../context/AppContext'
 import { buttonClass } from '../ui/Button'
 import { initialsOf } from '../../lib/format'
 
 export function Topbar({ onOpenNav, onOpenPalette }) {
-  const { theme, toggleTheme, settings, health, refetch } = useApp()
+  const { settings, health, refetch } = useApp()
+  const navigate = useNavigate()
   const { pathname } = useLocation()
   const current =
     ALL_NAV_ITEMS.find((item) => (item.to === '/' ? pathname === '/' : pathname.startsWith(item.to))) ??
     ALL_NAV_ITEMS[0]
+
+  const handleLogout = () => {
+    localStorage.removeItem('wattwise.isAuthenticated')
+    navigate('/login')
+  }
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-bg/80 backdrop-blur-xl">
@@ -59,15 +65,11 @@ export function Topbar({ onOpenNav, onOpenPalette }) {
         <button
           type="button"
           className={buttonClass({ variant: 'ghost', size: 'icon' })}
-          onClick={toggleTheme}
-          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+          onClick={handleLogout}
+          aria-label="Log out"
+          title="Log out"
         >
-          {theme === 'dark' ? (
-            <Sun className="size-4" strokeWidth={2.2} aria-hidden="true" />
-          ) : (
-            <Moon className="size-4" strokeWidth={2.2} aria-hidden="true" />
-          )}
+          <LogOut className="size-4" strokeWidth={2.2} aria-hidden="true" />
         </button>
 
         <Link

@@ -4,6 +4,7 @@ import { AppProvider } from './context/AppContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppShell } from './components/layout/AppShell'
 import { LoadingBlock } from './components/ui/States'
+import { AuthPage } from './pages/AuthPage'
 import { HomePage } from './pages/HomePage'
 
 /**
@@ -34,6 +35,7 @@ export default function App() {
             }
           >
             <Routes>
+              <Route path="/login" element={<AuthPage />} />
               <Route element={<AppShell />}>
                 <Route index element={<HomePage />} />
                 <Route path="/dashboard" element={<DashboardPage />} />

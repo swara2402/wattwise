@@ -156,7 +156,7 @@ export function MonthBars({ data, height = 240, highlightIndex }) {
           />
           <Bar dataKey="total" name="Monthly usage" radius={[6, 6, 0, 0]} isAnimationActive={false}>
             {data.map((entry, index) => (
-              <Cell key={entry.month} fill={index === highlightIndex ? 'var(--accent)' : 'var(--brand)'} />
+              <Cell key={`${entry.month}-${index}`} fill={index === highlightIndex ? 'var(--accent)' : 'var(--brand)'} />
             ))}
           </Bar>
         </BarChart>
