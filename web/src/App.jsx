@@ -1,9 +1,10 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppShell } from './components/layout/AppShell'
 import { LoadingBlock } from './components/ui/States'
+import { api } from './lib/api'
 import { AuthPage } from './pages/AuthPage'
 import { LandingPage } from './pages/LandingPage'
 
@@ -20,9 +21,21 @@ const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ de
 
 function ProtectedRoute() {
   const location = useLocation()
-  const authenticated = localStorage.getItem('wattwise.isAuthenticated') === 'true'
+  const [state, setState] = useState({ loading: true, authenticated: false })
 
-  if (!authenticated) {
+  useEffect(() => {
+    let active = true
+    api.auth.me()
+      .then(() => active && setState({ loading: false, authenticated: true }))
+      .catch(() => active && setState({ loading: false, authenticated: false }))
+    return () => { active = false }
+  }, [])
+
+  if (state.loading) {
+    return <div className="grid min-h-dvh place-items-center bg-bg"><LoadingBlock label="Opening your home…" /></div>
+  }
+
+  if (!state.authenticated) {
     return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
   }
 
