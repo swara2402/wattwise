@@ -107,6 +107,8 @@ export const api = {
     logout: (signal) => request('/auth/logout', { method: 'POST', signal }),
     updateHousehold: (payload, signal) =>
       request('/auth/household', { method: 'PATCH', body: payload, signal }),
+    getState: (signal) => request('/auth/state', { signal }),
+    saveState: (payload, signal) => request('/auth/state', { method: 'PUT', body: payload, signal }),
   },
 
   modelInfo: (signal) => request('/model-info', { signal }),
