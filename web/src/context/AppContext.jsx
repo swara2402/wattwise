@@ -39,6 +39,71 @@ export function AppProvider({ children }) {
 
   const resetSettings = useCallback(() => setSettings(DEFAULT_SETTINGS), [setSettings])
 
+  // Hydrate the household from the authenticated server account. Local state
+  // remains the fast UI cache, while the account is the source of truth.
+  useEffect(() => {
+    let active = true
+    const hydrate = () => {
+      api.auth.me()
+        .then((session) => {
+          if (!active || !session?.household) return
+          const h = session.household
+          setSettings((prev) => ({
+            ...prev,
+            userName: session.user?.name || prev.userName,
+            userEmail: session.user?.email || prev.userEmail,
+            householdName: h.name ?? prev.householdName,
+            propertyType: h.property_type ?? prev.propertyType,
+            householdMembers: h.household_members ?? prev.householdMembers,
+            electricityTariff: h.electricity_tariff ?? prev.electricityTariff,
+            fixedCharges: h.fixed_charges ?? prev.fixedCharges,
+            billAlert: h.bill_alert ?? prev.billAlert,
+            carbonIntensity: h.carbon_intensity ?? prev.carbonIntensity,
+            billingDays: h.billing_days ?? prev.billingDays,
+          }))
+        })
+        .catch(() => {})
+    }
+    hydrate()
+    window.addEventListener('wattwise-auth-changed', hydrate)
+    return () => {
+      active = false
+      window.removeEventListener('wattwise-auth-changed', hydrate)
+    }
+  }, [setSettings])
+
+  const householdSyncTimer = useRef(null)
+  const householdHydrated = useRef(false)
+  useEffect(() => {
+    if (!householdHydrated.current) {
+      householdHydrated.current = true
+      return undefined
+    }
+    clearTimeout(householdSyncTimer.current)
+    householdSyncTimer.current = setTimeout(() => {
+      api.auth.updateHousehold({
+        name: settings.householdName,
+        property_type: settings.propertyType,
+        household_members: Number(settings.householdMembers),
+        electricity_tariff: Number(settings.electricityTariff),
+        fixed_charges: Number(settings.fixedCharges),
+        bill_alert: Number(settings.billAlert),
+        carbon_intensity: Number(settings.carbonIntensity),
+        billing_days: Number(settings.billingDays),
+      }).catch(() => {})
+    }, 700)
+    return () => clearTimeout(householdSyncTimer.current)
+  }, [
+    settings.householdName,
+    settings.propertyType,
+    settings.householdMembers,
+    settings.electricityTariff,
+    settings.fixedCharges,
+    settings.billAlert,
+    settings.carbonIntensity,
+    settings.billingDays,
+  ])
+
   /* ---------------- appliances ---------------- */
   const [appliances, setAppliances] = usePersistentState(
     STORAGE_KEYS.appliances,
@@ -129,6 +194,50 @@ export function AppProvider({ children }) {
   )
 
   const resetScenarios = useCallback(() => setScenarios(DEFAULT_SCENARIOS), [setScenarios])
+
+  const householdStateHydrated = useRef(false)
+  const householdStateTimer = useRef(null)
+
+  useEffect(() => {
+    let active = true
+    api.auth.getState()
+      .then((state) => {
+        if (!active) return
+        if (state?.initialized) {
+          if (Array.isArray(state.appliances)) setAppliances(reviveAppliances(state.appliances))
+          if (Array.isArray(state.scenarios)) setScenarios(reviveScenarios(state.scenarios))
+        }
+        householdStateHydrated.current = true
+      })
+      .catch(() => {
+        // Anonymous/legacy sessions keep using the local cache.
+        householdStateHydrated.current = true
+      })
+    const refresh = () => {
+      api.auth.getState()
+        .then((state) => {
+          if (!active || !state?.initialized) return
+          if (Array.isArray(state.appliances)) setAppliances(reviveAppliances(state.appliances))
+          if (Array.isArray(state.scenarios)) setScenarios(reviveScenarios(state.scenarios))
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('wattwise-auth-changed', refresh)
+    return () => {
+      active = false
+      window.removeEventListener('wattwise-auth-changed', refresh)
+    }
+  }, [setAppliances, setScenarios])
+
+  useEffect(() => {
+    if (!householdStateHydrated.current) return undefined
+    clearTimeout(householdStateTimer.current)
+    householdStateTimer.current = setTimeout(() => {
+      api.auth.saveState({ appliances, scenarios }).catch(() => {})
+    }, 700)
+    return () => clearTimeout(householdStateTimer.current)
+  }, [appliances, scenarios])
+
 
   /* ---------------- toasts ---------------- */
   const [toasts, setToasts] = useState([])

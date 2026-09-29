@@ -15,7 +15,7 @@
 function resolveApiBase() {
   const configured = import.meta.env.VITE_API_URL?.trim()
   if (configured) return configured.replace(/\/$/, '')
-  if (import.meta.env.DEV) return 'http://127.0.0.1:8000'
+  if (import.meta.env.DEV) return 'http://localhost:8000'
   throw new Error(
     'VITE_API_URL is not set. Copy web/.env.example to web/.env.local and point it at your ' +
       'deployed FastAPI origin, e.g. https://wattwise-api.onrender.com',
@@ -54,6 +54,7 @@ async function request(path, { method = 'GET', body, timeout = 12000, signal } =
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       method,
+      credentials: 'include',
       headers: {
         Accept: 'application/json',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
@@ -96,6 +97,19 @@ export const api = {
   baseUrl: API_BASE,
 
   health: (signal) => request('/health', { timeout: 4000, signal }),
+
+  auth: {
+    me: (signal) => request('/auth/me', { signal }),
+    register: (name, email, password, signal) =>
+      request('/auth/register', { method: 'POST', body: { name, email, password }, signal }),
+    login: (email, password, signal) =>
+      request('/auth/login', { method: 'POST', body: { email, password }, signal }),
+    logout: (signal) => request('/auth/logout', { method: 'POST', signal }),
+    updateHousehold: (payload, signal) =>
+      request('/auth/household', { method: 'PATCH', body: payload, signal }),
+    getState: (signal) => request('/auth/state', { signal }),
+    saveState: (payload, signal) => request('/auth/state', { method: 'PUT', body: payload, signal }),
+  },
 
   modelInfo: (signal) => request('/model-info', { signal }),
 
@@ -181,11 +195,11 @@ export const api = {
     }).then((d) => ({
       bill: Number(d?.estimated_bill),
       energyCharge: Number(d?.energy_charge),
-      fixedCharge: Number(d?.fixed_charge_per_period),
+      fixedCharge: Number(d?.fixed_charge),
       consumptionKwh: Number(d?.consumption_kwh),
-      days: Number(d?.period_days),
+      days: Number(d?.days),
       tariffPerKwh: Number(d?.tariff_per_kwh),
-      period: d?.billing_period ?? `${d?.period_days}-day`,
+      period: d?.period ?? `${d?.days}-day`,
     })),
 
   /**

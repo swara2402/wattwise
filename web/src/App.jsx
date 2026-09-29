@@ -1,15 +1,14 @@
-import { lazy, Suspense } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppShell } from './components/layout/AppShell'
 import { LoadingBlock } from './components/ui/States'
-import { HomePage } from './pages/HomePage'
+import { api } from './lib/api'
+import { AuthPage } from './pages/AuthPage'
+import { OnboardingPage } from './pages/OnboardingPage'
+import { LandingPage } from './pages/LandingPage'
 
-/**
- * The dashboard is the only always-loaded view; everything else is split out
- * so the first paint does not pay for charts and the advisor on mobile.
- */
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })))
 const WastePage = lazy(() => import('./pages/WastePage').then((m) => ({ default: m.WastePage })))
@@ -21,34 +20,80 @@ const MethodologyPage = lazy(() => import('./pages/MethodologyPage').then((m) =>
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 
+function ProtectedRoute() {
+  const location = useLocation()
+  const [state, setState] = useState({ loading: true, authenticated: false })
+
+  const checkAuthentication = useCallback(() => {
+    let active = true
+    api.auth.me()
+      .then(() => {
+        if (active) {
+          setState({ 
+            loading: false, 
+            authenticated: true
+          })
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setState({ loading: false, authenticated: false })
+        }
+      })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    checkAuthentication()
+  }, [checkAuthentication])
+
+  if (state.loading) {
+    return <div className="grid min-h-dvh place-items-center bg-bg"><LoadingBlock label="Opening your home…" /></div>
+  }
+
+  if (!state.authenticated) {
+    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
+  }
+
+  return <AppShell />
+}
+
+function LazyPage({ children }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-[60vh] place-items-center">
+          <LoadingBlock label="Getting your energy view ready…" />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  )
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
         <BrowserRouter>
-          <Suspense
-            fallback={
-              <div className="grid min-h-[60vh] place-items-center">
-                <LoadingBlock label="Loading view…" />
-              </div>
-            }
-          >
-            <Routes>
-              <Route element={<AppShell />}>
-                <Route index element={<HomePage />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/analytics" element={<AnalyticsPage />} />
-                <Route path="/anomalies-excess" element={<WastePage />} />
-                <Route path="/simulator" element={<SimulatorPage />} />
-                <Route path="/predictor" element={<PredictorPage />} />
-                <Route path="/advisor" element={<AdvisorPage />} />
-                <Route path="/models" element={<ModelsPage />} />
-                <Route path="/methodology" element={<MethodologyPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="*" element={<NotFoundPage />} />
-              </Route>
-            </Routes>
-          </Suspense>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<AuthPage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/dashboard" element={<LazyPage><DashboardPage /></LazyPage>} />
+              <Route path="/analytics" element={<LazyPage><AnalyticsPage /></LazyPage>} />
+              <Route path="/anomalies-excess" element={<LazyPage><WastePage /></LazyPage>} />
+              <Route path="/simulator" element={<LazyPage><SimulatorPage /></LazyPage>} />
+              <Route path="/predictor" element={<LazyPage><PredictorPage /></LazyPage>} />
+              <Route path="/advisor" element={<LazyPage><AdvisorPage /></LazyPage>} />
+              <Route path="/models" element={<LazyPage><ModelsPage /></LazyPage>} />
+              <Route path="/methodology" element={<LazyPage><MethodologyPage /></LazyPage>} />
+              <Route path="/settings" element={<LazyPage><SettingsPage /></LazyPage>} />
+              <Route path="*" element={<LazyPage><NotFoundPage /></LazyPage>} />
+            </Route>
+          </Routes>
         </BrowserRouter>
       </AppProvider>
     </ErrorBoundary>

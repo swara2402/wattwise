@@ -65,8 +65,14 @@ ehthumbs.db
 *.crc
 
 # Data files > 100MB
+# Data files > 100MB
 WattWise-AI/data/raw/*.txt
 data/raw/*.txt
+
+# Data & DB files
+*.sqlite3
+*.db
+
 
 # Mobile / Android
 debug.keystore
