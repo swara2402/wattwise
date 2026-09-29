@@ -188,6 +188,35 @@ export function AppProvider({ children }) {
 
   const resetScenarios = useCallback(() => setScenarios(DEFAULT_SCENARIOS), [setScenarios])
 
+  const householdStateHydrated = useRef(false)
+  const householdStateTimer = useRef(null)
+
+  useEffect(() => {
+    let active = true
+    api.auth.getState()
+      .then((state) => {
+        if (!active) return
+        if (Array.isArray(state?.appliances) && state.appliances.length) setAppliances(reviveAppliances(state.appliances))
+        if (Array.isArray(state?.scenarios)) setScenarios(reviveScenarios(state.scenarios))
+        householdStateHydrated.current = true
+      })
+      .catch(() => {
+        // Anonymous/legacy sessions keep using the local cache.
+        householdStateHydrated.current = true
+      })
+    return () => { active = false }
+  }, [setAppliances, setScenarios])
+
+  useEffect(() => {
+    if (!householdStateHydrated.current) return undefined
+    clearTimeout(householdStateTimer.current)
+    householdStateTimer.current = setTimeout(() => {
+      api.auth.saveState({ appliances, scenarios }).catch(() => {})
+    }, 700)
+    return () => clearTimeout(householdStateTimer.current)
+  }, [appliances, scenarios])
+
+
   /* ---------------- toasts ---------------- */
   const [toasts, setToasts] = useState([])
   const timers = useRef(new Map())
