@@ -54,6 +54,7 @@ async function request(path, { method = 'GET', body, timeout = 12000, signal } =
   try {
     const response = await fetch(`${API_BASE}${path}`, {
       method,
+      credentials: 'include',
       headers: {
         Accept: 'application/json',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
@@ -96,6 +97,17 @@ export const api = {
   baseUrl: API_BASE,
 
   health: (signal) => request('/health', { timeout: 4000, signal }),
+
+  auth: {
+    me: (signal) => request('/auth/me', { signal }),
+    register: (name, email, password, signal) =>
+      request('/auth/register', { method: 'POST', body: { name, email, password }, signal }),
+    login: (email, password, signal) =>
+      request('/auth/login', { method: 'POST', body: { email, password }, signal }),
+    logout: (signal) => request('/auth/logout', { method: 'POST', signal }),
+    updateHousehold: (payload, signal) =>
+      request('/auth/household', { method: 'PATCH', body: payload, signal }),
+  },
 
   modelInfo: (signal) => request('/model-info', { signal }),
 
