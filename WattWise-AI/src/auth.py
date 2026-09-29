@@ -71,11 +71,20 @@ def init_db() -> None:
                 user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
                 appliances_json TEXT NOT NULL DEFAULT '[]',
                 scenarios_json TEXT NOT NULL DEFAULT '[]',
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                initialized INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+            
+            -- Safe migration for databases created before initialized existed.
+            
+
             """
         )
+        try:
+            db.execute("ALTER TABLE household_state ADD COLUMN initialized INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
 
 
 init_db()
