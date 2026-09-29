@@ -257,17 +257,8 @@ export function SettingsPage() {
             <h2 className="text-[0.98rem] font-semibold">Appearance</h2>
           </div>
           <p className="mt-1.5 text-[0.8rem] text-fg-muted">
-            Dark by default — it reads better on a wall-mounted dashboard.
+            Light mode for modern, clean energy monitoring.
           </p>
-
-          <div className="mt-4">
-            <Segmented
-              options={THEME_OPTIONS}
-              value={theme}
-              onChange={setTheme}
-              ariaLabel="Choose colour theme"
-            />
-          </div>
 
           <div className="mt-5 divide-y divide-line border-t border-line">
             <Toggle

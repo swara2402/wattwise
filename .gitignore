@@ -1,76 +1,37 @@
 # Dependencies
 node_modules/
-**/node_modules/
-.pnpm-store/
+.pnp
+.pnp.js
 
-# Build & Output
+# Build outputs
 dist/
-**/dist/
-dist-ssr/
 build/
-**/build/
-out/
-.vite/
 
-# Python
-__pycache__/
-**/__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-.venv/
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-
-# Environment & Secrets
+# Environment variables
 .env
 .env.local
 .env.*.local
-*.pem
-*.key
 
 # Logs
-logs/
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
+*.log
 
-# IDE & Editor files
-.vscode/
+# IDE
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-*.iml
-.gradle
-.kotlin
-local.properties
+.vscode/
+*.swp
+*.swo
+*~
+.trae/
 
-# Operating System & Temp
+# OS files
 .DS_Store
-.DS_Store?
-._*
 Thumbs.db
-ehthumbs.db
-*.crc
 
-# Data files > 100MB
-WattWise-AI/data/raw/*.txt
-data/raw/*.txt
-
-# Mobile / Android
-debug.keystore
-captures/
-.externalNativeBuild/
-.cxx/
-
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

@@ -1,67 +1,36 @@
 @import 'tailwindcss';
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 /* ============================================================
-   DESIGN TOKENS
+   DESIGN TOKENS - LIGHT MODE ONLY
    ============================================================ */
 
 :root {
-  --bg: #f4f6fa;
+  --bg: #f8fafc;
   --bg-elevated: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f1f4f9;
-  --surface-3: #e7ecf4;
+  --surface-2: #f1f5f9;
+  --surface-3: #e2e8f0;
   --border: rgb(15 23 42 / 0.09);
   --border-strong: rgb(15 23 42 / 0.16);
-  --fg: #0b1220;
-  --fg-muted: #52627a;
-  --fg-subtle: #7b8aa1;
-  --brand: #0f9d6b;
-  --brand-strong: #047857;
-  --brand-soft: rgb(15 157 107 / 0.12);
-  --accent: #5a8f0b;
-  --accent-soft: rgb(122 190 20 / 0.16);
-  --warn: #c2740a;
-  --warn-soft: rgb(217 119 6 / 0.14);
-  --danger: #d92d3c;
-  --danger-soft: rgb(217 45 60 / 0.12);
-  --info: #0369a1;
-  --info-soft: rgb(2 132 199 / 0.12);
-  --violet: #6d28d9;
-  --violet-soft: rgb(124 58 237 / 0.12);
+  --fg: #0f172a;
+  --fg-muted: #475569;
+  --fg-subtle: #64748b;
+  --brand: #0ea5e9;
+  --brand-strong: #0284c7;
+  --brand-soft: rgb(14 165 233 / 0.12);
+  --accent: #10b981;
+  --accent-soft: rgb(16 185 129 / 0.16);
+  --warn: #f59e0b;
+  --warn-soft: rgb(245 158 11 / 0.14);
+  --danger: #ef4444;
+  --danger-soft: rgb(239 68 68 / 0.12);
+  --info: #3b82f6;
+  --info-soft: rgb(59 130 246 / 0.12);
+  --violet: #8b5cf6;
+  --violet-soft: rgb(139 92 246 / 0.12);
   --shadow-color: 220 40% 20%;
   --grid-line: rgb(15 23 42 / 0.05);
   --glow: 0 0 0 1px rgb(15 23 42 / 0.04);
-}
-
-.dark {
-  --bg: #070a10;
-  --bg-elevated: #0d131c;
-  --surface: #0d131c;
-  --surface-2: #131b26;
-  --surface-3: #1a2431;
-  --border: rgb(255 255 255 / 0.08);
-  --border-strong: rgb(255 255 255 / 0.16);
-  --fg: #e9eff7;
-  --fg-muted: #93a1b5;
-  --fg-subtle: #6b7a8f;
-  --brand: #34d399;
-  --brand-strong: #6ee7b7;
-  --brand-soft: rgb(52 211 153 / 0.14);
-  --accent: #c6f24e;
-  --accent-soft: rgb(198 242 78 / 0.14);
-  --warn: #fbbf24;
-  --warn-soft: rgb(251 191 36 / 0.14);
-  --danger: #fb7185;
-  --danger-soft: rgb(251 113 133 / 0.14);
-  --info: #38bdf8;
-  --info-soft: rgb(56 189 248 / 0.14);
-  --violet: #a78bfa;
-  --violet-soft: rgb(167 139 250 / 0.14);
-  --shadow-color: 220 60% 2%;
-  --grid-line: rgb(255 255 255 / 0.05);
-  --glow: 0 0 0 1px rgb(255 255 255 / 0.05);
 }
 
 @theme inline {
