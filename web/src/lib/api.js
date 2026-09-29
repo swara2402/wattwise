@@ -15,7 +15,7 @@
 function resolveApiBase() {
   const configured = import.meta.env.VITE_API_URL?.trim()
   if (configured) return configured.replace(/\/$/, '')
-  if (import.meta.env.DEV) return 'http://127.0.0.1:8000'
+  if (import.meta.env.DEV) return 'http://localhost:8000'
   throw new Error(
     'VITE_API_URL is not set. Copy web/.env.example to web/.env.local and point it at your ' +
       'deployed FastAPI origin, e.g. https://wattwise-api.onrender.com',
