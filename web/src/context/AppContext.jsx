@@ -39,6 +39,64 @@ export function AppProvider({ children }) {
 
   const resetSettings = useCallback(() => setSettings(DEFAULT_SETTINGS), [setSettings])
 
+  // Hydrate the household from the authenticated server account. Local state
+  // remains the fast UI cache, while the account is the source of truth.
+  useEffect(() => {
+    let active = true
+    api.auth.me()
+      .then((session) => {
+        if (!active || !session?.household) return
+        const h = session.household
+        setSettings((prev) => ({
+          ...prev,
+          userName: session.user?.name || prev.userName,
+          userEmail: session.user?.email || prev.userEmail,
+          householdName: h.name ?? prev.householdName,
+          propertyType: h.property_type ?? prev.propertyType,
+          householdMembers: h.household_members ?? prev.householdMembers,
+          electricityTariff: h.electricity_tariff ?? prev.electricityTariff,
+          fixedCharges: h.fixed_charges ?? prev.fixedCharges,
+          billAlert: h.bill_alert ?? prev.billAlert,
+          carbonIntensity: h.carbon_intensity ?? prev.carbonIntensity,
+          billingDays: h.billing_days ?? prev.billingDays,
+        }))
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [setSettings])
+
+  const householdSyncTimer = useRef(null)
+  const householdHydrated = useRef(false)
+  useEffect(() => {
+    if (!householdHydrated.current) {
+      householdHydrated.current = true
+      return undefined
+    }
+    clearTimeout(householdSyncTimer.current)
+    householdSyncTimer.current = setTimeout(() => {
+      api.auth.updateHousehold({
+        name: settings.householdName,
+        property_type: settings.propertyType,
+        household_members: Number(settings.householdMembers),
+        electricity_tariff: Number(settings.electricityTariff),
+        fixed_charges: Number(settings.fixedCharges),
+        bill_alert: Number(settings.billAlert),
+        carbon_intensity: Number(settings.carbonIntensity),
+        billing_days: Number(settings.billingDays),
+      }).catch(() => {})
+    }, 700)
+    return () => clearTimeout(householdSyncTimer.current)
+  }, [
+    settings.householdName,
+    settings.propertyType,
+    settings.householdMembers,
+    settings.electricityTariff,
+    settings.fixedCharges,
+    settings.billAlert,
+    settings.carbonIntensity,
+    settings.billingDays,
+  ])
+
   /* ---------------- appliances ---------------- */
   const [appliances, setAppliances] = usePersistentState(
     STORAGE_KEYS.appliances,
