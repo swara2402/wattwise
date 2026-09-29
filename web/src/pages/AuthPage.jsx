@@ -51,6 +51,7 @@ export function AuthPage() {
         householdName: result.household?.name || 'My Home',
       })
 
+      window.dispatchEvent(new Event('wattwise-auth-changed'))
       navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err?.message || 'We could not open your account. Please try again.')
