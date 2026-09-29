@@ -58,7 +58,8 @@ def init_db() -> None:
                 bill_alert REAL NOT NULL DEFAULT 1500,
                 carbon_intensity REAL NOT NULL DEFAULT 0.79,
                 billing_days INTEGER NOT NULL DEFAULT 30,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                initialized INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS sessions (
                 token_hash TEXT PRIMARY KEY,
@@ -256,14 +257,15 @@ def update_household(payload: HouseholdPatch, user: dict = Depends(current_user)
 def get_state(user: dict = Depends(current_user)) -> dict:
     with _connect() as db:
         row = db.execute(
-            "SELECT appliances_json,scenarios_json FROM household_state WHERE user_id=?",
+            "SELECT appliances_json,scenarios_json,initialized FROM household_state WHERE user_id=?",
             (user["id"],),
         ).fetchone()
     if not row:
-        return {"appliances": [], "scenarios": []}
+        return {"appliances": [], "scenarios": [], "initialized": False}
     return {
         "appliances": json.loads(row["appliances_json"]),
         "scenarios": json.loads(row["scenarios_json"]),
+        "initialized": bool(row["initialized"]),
     }
 
 
@@ -272,12 +274,13 @@ def save_state(payload: HouseholdState, user: dict = Depends(current_user)) -> d
     now = _now().isoformat()
     with _connect() as db:
         db.execute(
-            """INSERT INTO household_state(user_id,appliances_json,scenarios_json,updated_at)
-               VALUES(?,?,?,?)
+            """INSERT INTO household_state(user_id,appliances_json,scenarios_json,updated_at,initialized)
+               VALUES(?,?,?,?,1)
                ON CONFLICT(user_id) DO UPDATE SET
                  appliances_json=excluded.appliances_json,
                  scenarios_json=excluded.scenarios_json,
-                 updated_at=excluded.updated_at""",
+                 updated_at=excluded.updated_at,
+                 initialized=1""",
             (user["id"], json.dumps(payload.appliances), json.dumps(payload.scenarios), now),
         )
     return {"ok": True, "updated_at": now}
