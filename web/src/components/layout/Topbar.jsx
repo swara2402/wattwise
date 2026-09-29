@@ -3,6 +3,7 @@ import { Bolt, Menu, LogOut, RefreshCw, Search } from 'lucide-react'
 import { ALL_NAV_ITEMS } from '../../navigation'
 import { useApp } from '../../context/AppContext'
 import { buttonClass } from '../ui/Button'
+import { api } from '../../lib/api'
 import { initialsOf } from '../../lib/format'
 
 export function Topbar({ onOpenNav, onOpenPalette }) {
@@ -11,9 +12,8 @@ export function Topbar({ onOpenNav, onOpenPalette }) {
   const { pathname } = useLocation()
   const current = ALL_NAV_ITEMS.find((item) => (item.to === '/' ? pathname === '/' : pathname.startsWith(item.to))) ?? ALL_NAV_ITEMS[0]
 
-  const handleLogout = () => {
-    localStorage.removeItem('wattwise.isAuthenticated')
-    navigate('/login', { replace: true })
+  const handleLogout = async () => {
+    try { await api.auth.logout() } finally { navigate('/login', { replace: true }) }
   }
 
   return (
