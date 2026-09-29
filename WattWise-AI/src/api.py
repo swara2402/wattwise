@@ -28,6 +28,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 try:
+    from .auth import router as auth_router
+except ImportError:
+    from auth import router as auth_router  # type: ignore[no-redef]
+
+try:
     # Package import:
     # uvicorn src.api:app
     from . import metadata as meta
@@ -62,6 +67,9 @@ except ImportError:
 # =========================================================
 # APP
 # =========================================================
+
+app.include_router(auth_router)
+
 
 app = FastAPI(
     title="WattWise AI API",
