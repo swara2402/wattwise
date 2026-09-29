@@ -7,26 +7,15 @@
     <meta name="theme-color" content="#f8fafc" />
     <meta
       name="description"
-      content="WattWise AI — household energy intelligence. ML-powered bill forecasting, waste and anomaly detection, and a what-if savings simulator."
+      content="WattWise makes household energy simple. Understand your usage, estimate your bill, spot unusual patterns, and find practical savings."
     />
-    <title>WattWise AI — Household Energy Intelligence</title>
+    <title>WattWise — Energy, finally simple.</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <script>
-      // Light mode only
-      try {
-        document.documentElement.style.colorScheme = 'light'
-        // Check if user is authenticated
-        const isAuthenticated = localStorage.getItem('wattwise.isAuthenticated') === 'true'
-        if (!isAuthenticated && window.location.pathname !== '/login') {
-          window.location.href = '/login'
-        }
-      } catch (_) {}
-    </script>
   </head>
   <body>
     <div id="root"></div>

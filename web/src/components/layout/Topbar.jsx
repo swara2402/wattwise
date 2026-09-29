@@ -9,24 +9,17 @@ export function Topbar({ onOpenNav, onOpenPalette }) {
   const { settings, health, refetch } = useApp()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const current =
-    ALL_NAV_ITEMS.find((item) => (item.to === '/' ? pathname === '/' : pathname.startsWith(item.to))) ??
-    ALL_NAV_ITEMS[0]
+  const current = ALL_NAV_ITEMS.find((item) => (item.to === '/' ? pathname === '/' : pathname.startsWith(item.to))) ?? ALL_NAV_ITEMS[0]
 
   const handleLogout = () => {
     localStorage.removeItem('wattwise.isAuthenticated')
-    navigate('/login')
+    navigate('/login', { replace: true })
   }
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-bg/80 backdrop-blur-xl">
       <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-        <button
-          type="button"
-          className={buttonClass({ variant: 'ghost', size: 'icon' })}
-          onClick={onOpenNav}
-          aria-label="Open navigation"
-        >
+        <button type="button" className={buttonClass({ variant: 'ghost', size: 'icon' })} onClick={onOpenNav} aria-label="Open navigation">
           <Menu className="size-5" strokeWidth={2.2} aria-hidden="true" />
         </button>
 
@@ -35,48 +28,21 @@ export function Topbar({ onOpenNav, onOpenPalette }) {
           <p className="hidden truncate text-[0.72rem] text-fg-subtle sm:block">{current.description}</p>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenPalette}
-          className={buttonClass({ variant: 'outline' })}
-          aria-label="Open command palette"
-        >
+        <button type="button" onClick={onOpenPalette} className={buttonClass({ variant: 'outline' })} aria-label="Open command palette">
           <Search className="size-4" strokeWidth={2.2} aria-hidden="true" />
           <span className="hidden sm:inline">Search or jump to…</span>
-          <kbd className="hidden rounded border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-[0.65rem] text-fg-subtle md:inline">
-            ⌘K
-          </kbd>
+          <kbd className="hidden rounded border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-[0.65rem] text-fg-subtle md:inline">⌘K</kbd>
         </button>
 
-        <button
-          type="button"
-          className={buttonClass({ variant: 'ghost', size: 'icon' })}
-          onClick={refetch}
-          aria-label="Refresh backend data"
-          title="Refresh data"
-        >
-          <RefreshCw
-            className={`size-4 ${health.status === 'refreshing' ? 'animate-spin' : ''}`}
-            strokeWidth={2.2}
-            aria-hidden="true"
-          />
+        <button type="button" className={buttonClass({ variant: 'ghost', size: 'icon' })} onClick={refetch} aria-label="Refresh backend data" title="Refresh data">
+          <RefreshCw className={`size-4 ${health.status === 'refreshing' ? 'animate-spin' : ''}`} strokeWidth={2.2} aria-hidden="true" />
         </button>
 
-        <button
-          type="button"
-          className={buttonClass({ variant: 'ghost', size: 'icon' })}
-          onClick={handleLogout}
-          aria-label="Log out"
-          title="Log out"
-        >
+        <button type="button" className={buttonClass({ variant: 'ghost', size: 'icon' })} onClick={handleLogout} aria-label="Log out" title="Log out">
           <LogOut className="size-4" strokeWidth={2.2} aria-hidden="true" />
         </button>
 
-        <Link
-          to="/settings"
-          className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-surface-2 text-[0.75rem] font-bold text-brand transition-colors hover:border-brand/40 hover:bg-brand-soft"
-          aria-label={`Settings for ${settings.userName}`}
-        >
+        <Link to="/settings" className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-surface-2 text-[0.75rem] font-bold text-brand transition-colors hover:border-brand/40 hover:bg-brand-soft" aria-label={`Settings for ${settings.userName}`}>
           {initialsOf(settings.userName)}
         </Link>
       </div>
@@ -91,13 +57,8 @@ export function OfflineBanner() {
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 border-b border-warn/25 bg-warn-soft px-4 py-2 text-[0.78rem] text-fg-muted">
       <Bolt className="size-4 shrink-0 text-warn" strokeWidth={2.4} aria-hidden="true" />
-      <span>
-        <strong className="font-semibold text-fg">Backend offline.</strong> Showing the last known snapshot —
-        household plans and settings still work and are saved locally.
-      </span>
-      <button type="button" className="btn btn-outline btn-sm" onClick={refetch}>
-        Retry
-      </button>
+      <span><strong className="font-semibold text-fg">Backend offline.</strong> Showing the last known snapshot. Household plans and settings still work locally.</span>
+      <button type="button" className="btn btn-outline btn-sm" onClick={refetch}>Retry</button>
     </div>
   )
 }

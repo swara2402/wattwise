@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar, MobileNav } from './Sidebar'
 import { Topbar, OfflineBanner } from './Topbar'
 import { CommandPalette } from '../CommandPalette'
 import { ToastViewport } from '../ToastViewport'
+import '../../app-motion.css'
 
 export function AppShell() {
   const [navOpen, setNavOpen] = useState(false)
@@ -48,11 +49,13 @@ export function AppShell() {
         <OfflineBanner />
         <main id="main" className="flex-1 px-4 py-6 sm:px-6 sm:py-8">
           <div className="mx-auto w-full max-w-[1400px]">
-            <Outlet />
+            <div key={pathname} className="page-enter">
+              <Outlet />
+            </div>
           </div>
         </main>
         <footer className="border-t border-line px-4 py-5 text-center text-[0.72rem] text-fg-subtle sm:px-6">
-          WattWise AI · Random Forest V2 forecasting · Isolation Forest V2 anomaly detection ·{' '}
+          WattWise · Smart energy decisions, without the spreadsheet headache ·{' '}
           <span className="text-fg-muted">All savings are estimates, not billing guarantees.</span>
         </footer>
       </div>
