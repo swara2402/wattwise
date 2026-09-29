@@ -32,12 +32,6 @@ export function OnboardingPage() {
   const handleComplete = async () => {
     setIsLoading(true)
     try {
-      // Update household with selected values
-      await api.auth.updateHousehold({
-        property_type: selectedProperty,
-        household_members: householdSize,
-      })
-
       // Create appliances based on user selection
       const appliances = []
       let idCounter = 1
@@ -64,22 +58,29 @@ export function OnboardingPage() {
         appliances.push(...DEFAULT_APPLIANCES.slice(0, 3))
       }
 
-      // Update context with appliances
+      // Always update local context first
       setAppliances(appliances)
-      
-      // Save state to backend - mark as initialized
-      await api.auth.saveState({ appliances, scenarios: [] })
-
-      // Update settings in context
       updateSettings({
         propertyType: selectedProperty,
         householdMembers: householdSize,
       })
 
-      // Navigate to dashboard
+      // Attempt backend sync if authenticated, but do not block user if offline/unauthenticated
+      try {
+        await api.auth.updateHousehold({
+          property_type: selectedProperty,
+          household_members: householdSize,
+        })
+        await api.auth.saveState({ appliances, scenarios: [] })
+      } catch (syncErr) {
+        console.warn('Backend sync failed during onboarding, saving locally:', syncErr)
+      }
+
+      // Always navigate to dashboard
       navigate('/dashboard', { replace: true })
     } catch (err) {
       console.error('Onboarding error:', err)
+      navigate('/dashboard', { replace: true })
     } finally {
       setIsLoading(false)
     }
@@ -205,7 +206,7 @@ export function OnboardingPage() {
                     key={appliance.value}
                     type="button"
                     onClick={() => toggleAppliance(appliance.value)}
-                    className={`flex flex-col items-center justify-center gap-2 rounded-2xl border p-4 text-center transition-all hover:border-violet-500/50 ${
+                    className={`relative flex flex-col items-center justify-center gap-2 rounded-2xl border p-4 text-center transition-all hover:border-violet-500/50 ${
                       selectedAppliances.includes(appliance.value)
                         ? 'border-violet-500 bg-violet-500/10 ring-2 ring-violet-500/20'
                         : 'border-line bg-surface/80'
