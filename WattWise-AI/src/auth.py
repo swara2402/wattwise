@@ -58,8 +58,7 @@ def init_db() -> None:
                 bill_alert REAL NOT NULL DEFAULT 1500,
                 carbon_intensity REAL NOT NULL DEFAULT 0.79,
                 billing_days INTEGER NOT NULL DEFAULT 30,
-                updated_at TEXT NOT NULL,
-                initialized INTEGER NOT NULL DEFAULT 0
+                updated_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS sessions (
                 token_hash TEXT PRIMARY KEY,
