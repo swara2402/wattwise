@@ -35,3 +35,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Local databases and raw datasets
+*.sqlite3
+WattWise-AI/data/raw/*.txt

@@ -1,50 +1,122 @@
 import {
-  ChartNoAxesCombined,
   Gauge,
   LineChart,
-  Settings as SettingsIcon,
-  SlidersHorizontal,
-  Sparkles,
   TriangleAlert,
+  SlidersHorizontal,
   Wallet,
+  Sparkles,
+  Settings as SettingsIcon,
+  FlaskConical,
+  TrendingUp,
+  ChartNoAxesCombined,
 } from 'lucide-react'
 
 export const NAV_SECTIONS = [
   {
     id: 'overview',
-    label: 'Home',
-    items: [{ to: '/dashboard', label: 'My Dashboard', icon: Gauge, description: 'See your energy use, costs and important alerts', keywords: 'usage cost bill trend summary home' }],
+    label: 'Overview',
+    items: [
+      {
+        to: '/dashboard',
+        label: 'My Home',
+        icon: Gauge,
+        description: 'Your energy at a glance — usage, bill estimate, and status',
+        keywords: 'home overview usage cost bill summary dashboard',
+      },
+    ],
   },
   {
-    id: 'analyse',
-    label: 'Track Usage',
+    id: 'track',
+    label: 'Track & Understand',
     items: [
-      { to: '/analytics', label: 'Usage Charts', icon: LineChart, description: 'View your daily, weekly and monthly energy patterns', keywords: 'charts usage weekday month heatmap export' },
-      { to: '/anomalies-excess', label: 'Unusual Usage', icon: TriangleAlert, description: 'See when you used more energy than normal', keywords: 'waste spikes outliers unusual usage' },
+      {
+        to: '/analytics',
+        label: 'My Usage',
+        icon: LineChart,
+        description: 'See how your electricity use changes day to day and month to month',
+        keywords: 'usage charts history trends weekday month heatmap',
+      },
+      {
+        to: '/anomalies-excess',
+        label: 'Unusual Days',
+        icon: TriangleAlert,
+        description: 'Find days when your electricity use was much higher than usual',
+        keywords: 'unusual usage anomalies spikes excess high',
+      },
     ],
   },
   {
     id: 'act',
     label: 'Save Money',
     items: [
-      { to: '/simulator', label: 'Savings Calculator', icon: SlidersHorizontal, description: 'See how much you can save by changing appliance use', keywords: 'savings plan preset scenario compare appliances' },
-      { to: '/predictor', label: 'Bill Calculator', icon: Wallet, description: 'Estimate your future energy bills', keywords: 'predict forecast bill cost estimate' },
-      { to: '/advisor', label: 'Energy Tips', icon: Sparkles, description: 'Get simple tips to lower your energy use', keywords: 'recommendations tips save advice energy' },
+      {
+        to: '/predictor',
+        label: 'Forecast Usage',
+        icon: TrendingUp,
+        description: 'Estimate how much electricity you will use and what your bill might be',
+        keywords: 'predict forecast usage bill cost estimate future',
+      },
+      {
+        to: '/simulator',
+        label: 'Savings Calculator',
+        icon: SlidersHorizontal,
+        description: 'See how much you could save by changing how you use appliances',
+        keywords: 'save savings calculator what-if appliances reduce',
+      },
+      {
+        to: '/advisor',
+        label: 'Energy Tips',
+        icon: Sparkles,
+        description: 'Simple tips and suggestions to lower your electricity bill',
+        keywords: 'tips advice save energy recommendations reduce',
+      },
     ],
   },
   {
-    id: 'system',
+    id: 'settings',
     label: 'Settings',
-    items: [{ to: '/settings', label: 'My Settings', icon: SettingsIcon, description: 'Update your profile, billing and account preferences', keywords: 'profile tariff currency household reset export' }],
+    items: [
+      {
+        to: '/settings',
+        label: 'My Settings',
+        icon: SettingsIcon,
+        description: 'Update your tariff, household details, and billing preferences',
+        keywords: 'settings tariff household profile reset preferences',
+      },
+    ],
+  },
+  {
+    id: 'technical',
+    label: 'Technical Details',
+    items: [
+      {
+        to: '/models',
+        label: 'How WattWise Works',
+        icon: FlaskConical,
+        description: 'The AI models, data pipeline, and prediction accuracy behind WattWise',
+        keywords: 'models ai machine learning pipeline technical details accuracy',
+        badge: 'Tech',
+      },
+      {
+        to: '/methodology',
+        label: 'Research & Methods',
+        icon: ChartNoAxesCombined,
+        description: 'Academic methodology, Spark pipeline, and SMLBDA project documentation',
+        keywords: 'methodology spark pipeline academic research smlbda',
+        badge: 'SMLBDA',
+      },
+    ],
   },
 ]
 
-export const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items.map((item) => ({ ...item, section: section.label })))
+export const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap((section) =>
+  section.items.map((item) => ({ ...item, section: section.label })),
+)
 
 export const COMMAND_ACTIONS = [
-  { id: 'run-prediction', label: 'Calculate future bills', to: '/predictor', icon: Wallet, keywords: 'bill calculate estimate' },
-  { id: 'open-simulator', label: 'See how to save money', to: '/simulator', icon: SlidersHorizontal, keywords: 'savings calculator save' },
-  { id: 'review-anomalies', label: 'Check unusual usage', to: '/anomalies-excess', icon: TriangleAlert, keywords: 'spikes unusual waste' },
-  { id: 'advisor-actions', label: 'Get energy saving tips', to: '/advisor', icon: Sparkles, keywords: 'tips recommendations save' },
-  { id: 'export-report', label: 'Download your energy data', to: '/analytics', icon: ChartNoAxesCombined, keywords: 'download export data report' },
+  { id: 'forecast-usage', label: 'Forecast my electricity usage', to: '/predictor', icon: TrendingUp, keywords: 'predict forecast usage' },
+  { id: 'savings-calculator', label: 'See how much I can save', to: '/simulator', icon: SlidersHorizontal, keywords: 'save savings what-if' },
+  { id: 'unusual-days', label: 'Find unusual electricity days', to: '/anomalies-excess', icon: TriangleAlert, keywords: 'unusual anomaly spike' },
+  { id: 'energy-tips', label: 'Get tips to save energy', to: '/advisor', icon: Sparkles, keywords: 'tips advice recommendations' },
+  { id: 'my-usage', label: 'See my usage history', to: '/analytics', icon: ChartNoAxesCombined, keywords: 'usage history charts' },
 ]
