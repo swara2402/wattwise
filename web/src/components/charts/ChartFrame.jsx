@@ -24,7 +24,7 @@ export function ChartFrame({
   return (
     <Card className={clsx('card-pad', className)}>
       {(title || action) && (
-        <CardHeader title={title} subtitle={subtitle} icon={icon} action={action} className="mb-4" />
+        <CardHeader title={title} subtitle={subtitle} icon={icon} action={action} className="mb-5 sm:mb-6" />
       )}
       {isEmpty ? (
         <div style={{ minHeight: height }} className="grid place-items-center">

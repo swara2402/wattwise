@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import clsx from 'clsx'
-import { Bolt, RefreshCw, X } from 'lucide-react'
+import { Bolt, ChevronDown, RefreshCw, X } from 'lucide-react'
 import { NAV_SECTIONS } from '../../navigation'
 import { useApp } from '../../context/AppContext'
 import { initialsOf } from '../../lib/format'
@@ -8,24 +9,30 @@ import { buttonClass } from '../ui/Button'
 
 export function Sidebar({ onNavigate }) {
   const { settings, health } = useApp()
-  const { online, status, refetch, data } = health
+  const { online, status, refetch } = health
+  const [techOpen, setTechOpen] = useState(false)
+
+  const mainSections = NAV_SECTIONS.filter((s) => s.id !== 'technical')
+  const techSection = NAV_SECTIONS.find((s) => s.id === 'technical')
 
   return (
     <div className="flex h-full flex-col gap-1 bg-surface">
+      {/* Logo */}
       <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-line px-4">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand text-slate-950 shadow-[0_6px_18px_-8px_var(--brand)]">
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand text-white shadow-[0_6px_18px_-8px_var(--brand)]">
           <Bolt className="size-5" strokeWidth={2.6} aria-hidden="true" />
         </span>
         <div className="min-w-0">
           <p className="truncate text-[0.95rem] font-bold leading-tight tracking-tight">WattWise</p>
-          <p className="truncate text-[0.68rem] font-medium text-fg-subtle">Energy Intelligence</p>
+          <p className="truncate text-[0.68rem] font-medium text-fg-subtle">Your energy assistant</p>
         </div>
       </div>
 
+      {/* Main nav */}
       <nav className="scrollbar-slim flex-1 space-y-5 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-        {NAV_SECTIONS.map((section) => (
+        {mainSections.map((section) => (
           <div key={section.id}>
-            <p className="mb-1.5 px-2.5 text-[0.64rem] font-bold uppercase tracking-[0.14em] text-fg-subtle">
+            <p className="mb-1.5 px-2.5 text-[0.62rem] font-bold uppercase tracking-[0.14em] text-fg-subtle">
               {section.label}
             </p>
             <ul className="space-y-0.5">
@@ -48,15 +55,59 @@ export function Sidebar({ onNavigate }) {
             </ul>
           </div>
         ))}
+
+        {/* Collapsible technical section */}
+        {techSection && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setTechOpen((open) => !open)}
+              className="mb-1.5 flex w-full items-center justify-between px-2.5 text-left"
+              aria-expanded={techOpen}
+            >
+              <p className="text-[0.62rem] font-bold uppercase tracking-[0.14em] text-fg-subtle">
+                {techSection.label}
+              </p>
+              <ChevronDown
+                className={clsx(
+                  'size-3.5 text-fg-subtle transition-transform duration-200',
+                  techOpen && 'rotate-180',
+                )}
+                strokeWidth={2.4}
+                aria-hidden="true"
+              />
+            </button>
+            {techOpen && (
+              <ul className="space-y-0.5">
+                {techSection.items.map((item) => (
+                  <li key={item.to}>
+                    <NavLink
+                      to={item.to}
+                      onClick={onNavigate}
+                      className={({ isActive }) => clsx('nav-item', isActive && 'nav-item-active')}
+                    >
+                      <item.icon className="size-4.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      {item.badge && (
+                        <span className="badge badge-accent !px-1.5 !py-0 !text-[0.58rem]">{item.badge}</span>
+                      )}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </nav>
 
+      {/* Bottom: status + user */}
       <div className="shrink-0 space-y-2 border-t border-line p-3">
         <button
           type="button"
           onClick={refetch}
           className={clsx(
             'flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors',
-            online ? 'border-brand/30 bg-brand-soft' : 'border-danger/30 bg-danger-soft',
+            online ? 'border-accent/30 bg-accent-soft' : 'border-warn/30 bg-warn-soft',
           )}
           aria-live="polite"
         >
@@ -64,7 +115,7 @@ export function Sidebar({ onNavigate }) {
             <span
               className={clsx(
                 'size-2 rounded-full',
-                online ? 'bg-brand animate-pulse-soft' : 'bg-danger',
+                online ? 'bg-accent animate-pulse-soft' : 'bg-warn',
               )}
             />
             {status === 'refreshing' && (
@@ -73,10 +124,10 @@ export function Sidebar({ onNavigate }) {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[0.78rem] font-semibold leading-tight">
-              {online ? 'Backend online' : status === 'refreshing' ? 'Reconnecting…' : 'Demo mode'}
+              {online ? '✓ Connected' : status === 'refreshing' ? 'Reconnecting…' : 'Working offline'}
             </span>
             <span className="block truncate text-[0.66rem] text-fg-subtle">
-              {online ? `${data?.model ?? 'Random Forest V2'} · ${data?.features ?? 26} features` : 'Live data paused'}
+              {online ? 'Live data active' : 'Showing last saved data'}
             </span>
           </span>
         </button>
@@ -102,8 +153,6 @@ export function MobileNav({ open, onClose }) {
         'fixed inset-0 z-40 lg:hidden',
         open ? 'pointer-events-auto' : 'pointer-events-none',
       )}
-      // `inert` keeps the off-canvas panel out of the tab order and the
-      // accessibility tree while it is closed.
       inert={!open}
     >
       <div

@@ -47,8 +47,8 @@ export function AppShell() {
       <div className="flex min-h-dvh flex-col lg:pl-64">
         <Topbar onOpenNav={() => setNavOpen(true)} onOpenPalette={openPalette} />
         <OfflineBanner />
-        <main id="main" className="flex-1 px-4 py-6 sm:px-6 sm:py-8">
-          <div className="mx-auto w-full max-w-[1400px]">
+        <main id="main" className="flex-1 px-5 py-8 sm:px-10 sm:py-10">
+          <div className="mx-auto w-full max-w-[1360px]">
             <div key={pathname} className="page-enter">
               <Outlet />
             </div>
